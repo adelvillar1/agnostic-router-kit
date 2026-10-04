@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="470" viewBox="0 0 1080 470" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#58a6ff"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1080" height="470" rx="12" fill="#0d1117"/>
+  <text x="28" y="36" font-size="16" font-weight="600" fill="#e6edf3">Quota: measured spend + your console readings</text>
+  <text x="28" y="56" font-size="11" fill="#8b949e">no plan provider exposes a quota API — allowances are derived, then reconciled at every console read</text>
+
+  <!-- measured -->
+  <rect x="30" y="76" width="320" height="300" rx="8" fill="#161b22" stroke="#2a313c"/>
+  <text x="46" y="102" font-size="11" letter-spacing="1.2" fill="#8b949e">1 · MEASURED — USAGE LEDGER</text>
+  <text x="46" y="130" font-size="11.5" fill="#e6edf3">every upstream call records:</text>
+  <text x="46" y="152" font-size="10.5" fill="#8b949e">tokens × off-peak weight → hourly</text>
+  <text x="46" y="168" font-size="10.5" fill="#8b949e">buckets per provider, plus a</text>
+  <text x="46" y="184" font-size="10.5" fill="#8b949e">cumulative weighted counter</text>
+  <text x="46" y="216" font-size="10.5" fill="#8b949e">recent ring: latency + error rate</text>
+  <text x="46" y="240" font-size="10.5" fill="#8b949e">per model (last ~100 requests)</text>
+  <text x="46" y="278" font-size="10.5" fill="#6e7681">offpeak: { from, to, weight, tz }</text>
+  <text x="46" y="296" font-size="10.5" fill="#6e7681">off-peak hours count at the declared</text>
+  <text x="46" y="312" font-size="10.5" fill="#6e7681">fraction — the weighting keeps the</text>
+  <text x="46" y="328" font-size="10.5" fill="#6e7681">conversion stable as your mix shifts</text>
+
+  <!-- calibrated -->
+  <rect x="380" y="76" width="320" height="300" rx="8" fill="#161b22" stroke="#2a313c"/>
+  <text x="396" y="102" font-size="11" letter-spacing="1.2" fill="#8b949e">2 · DECLARED + CALIBRATED</text>
+  <text x="396" y="130" font-size="11.5" fill="#e6edf3">quota: { kind, allowance?,</text>
+  <text x="396" y="148" font-size="11.5" fill="#e6edf3">  calibration.reads, offpeak }</text>
+  <text x="396" y="176" font-size="10.5" fill="#8b949e">a console read — (date, % used) —</text>
+  <text x="396" y="192" font-size="10.5" fill="#8b949e">is stamped with the cumulative</text>
+  <text x="396" y="208" font-size="10.5" fill="#8b949e">weighted spend at that instant</text>
+  <text x="396" y="240" font-size="11.5" fill="#3fb950">allowance ≈ Δspend ÷ Δpct</text>
+  <text x="396" y="262" font-size="10.5" fill="#8b949e">spend = windowed weighted sum:</text>
+  <text x="396" y="278" font-size="10.5" fill="#8b949e">pool (start) · calendar (billing day)</text>
+  <text x="396" y="294" font-size="10.5" fill="#8b949e">rolling (trailing windowHours)</text>
+  <text x="396" y="322" font-size="10.5" fill="#6e7681">a % that drops between reads is a</text>
+  <text x="396" y="338" font-size="10.5" fill="#6e7681">reset — never calibrated across</text>
+
+  <!-- drives -->
+  <rect x="730" y="76" width="320" height="300" rx="8" fill="#161b22" stroke="#2a313c"/>
+  <text x="746" y="102" font-size="11" letter-spacing="1.2" fill="#8b949e">3 · DRIVES</text>
+  <text x="746" y="130" font-size="11.5" fill="#3fb950">headroom = 1 − spend ÷ allowance</text>
+  <text x="746" y="158" font-size="10.5" fill="#8b949e">steering: headroom &lt; 40% → walk to</text>
+  <text x="746" y="174" font-size="10.5" fill="#8b949e">the next candidate in the tier chain</text>
+  <text x="746" y="198" font-size="10.5" fill="#8b949e">suggester: &lt; 5% headroom is never</text>
+  <text x="746" y="214" font-size="10.5" fill="#8b949e">a suggested primary</text>
+  <text x="746" y="242" font-size="10.5" fill="#8b949e">exhausted anyway → cooldown + the</text>
+  <text x="746" y="258" font-size="10.5" fill="#8b949e">runtime failover walk</text>
+  <text x="746" y="286" font-size="10.5" fill="#8b949e">dashboard: quota panel + reconciliation</text>
+  <text x="746" y="302" font-size="10.5" fill="#8b949e">(ledger-implied % vs next console read)</text>
+  <text x="746" y="330" font-size="10.5" fill="#6e7681">undeclared providers are neutral —</text>
+  <text x="746" y="346" font-size="10.5" fill="#6e7681">never steered away from</text>
+
+  <!-- arrows -->
+  <line x1="350" y1="226" x2="380" y2="226" stroke="#58a6ff" stroke-width="1.2" marker-end="url(#ah3)"/>
+  <line x1="700" y1="226" x2="730" y2="226" stroke="#58a6ff" stroke-width="1.2" marker-end="url(#ah3)"/>
+
+  <!-- footer -->
+  <text x="30" y="430" font-size="10.5" fill="#d29922">These are estimates with a known direction of error — conservative steering, reconciled at every console read. Undeclared providers are simply excluded.</text>
+  <text x="30" y="450" font-size="10" fill="#6e7681">Quota tab is hidden by default (SHOW_QUOTA_TAB in dashboard.html) until real console readings exist to calibrate against; steering works as soon as the roster declares quota.</text>
+</svg>

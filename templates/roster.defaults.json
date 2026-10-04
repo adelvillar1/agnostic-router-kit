@@ -1,0 +1,97 @@
+/**
+ * Starter roster for `kit init --template`. Edit before applying — the values
+ * here name plans, not keys: every credential is an env-var name resolved by
+ * `kit env set NAME=value` into the router runtime .env (chmod 600).
+ *
+ * Validation rules (lib/roster.mjs):
+ *   - providers.<id>: apiKeyEnv + baseUrl (models[] optional for router-only)
+ *   - tiers.<name>.target: "providerId/modelId", plus optional fallbacks
+ *   - profiles: workload pins or {use: omniModel|mixture}
+ *   - omniModel / wideModel / mixture.aggregator: target or ordered candidates
+ *   - judge.mode: typesafe | fastino | cascade (cascade needs sys1 on :8400)
+ */
+{
+  "version": 1,
+  "router": {
+    "port": 8300,
+    "localToken": "local-auto-router"
+  },
+  "typesafe": {
+    "apiKeyEnv": "TYPESAFE_API_KEY",
+    "model": "jev-1.13.0",
+    "ttlHours": 6
+  },
+  "allowPayg": false,
+  "providers": {
+    "stepfun": {
+      "providerName": "StepFun Step Plan",
+      "baseUrl": "https://api.stepfun.ai/step_plan/v1",
+      "apiKeyEnv": "STEPFUN_API_KEY",
+      "billing": "plan",
+      "models": ["step-5-preview", "step-3.7-flash"],
+      "featured": ["step-5-preview", "step-3.7-flash"]
+    },
+    "zai-coding-plan": {
+      "providerName": "Zai Coding Plan",
+      "baseUrl": "https://api.z.ai/api/coding/paas/v4",
+      "apiKeyEnv": "ZAI_CODING_API_KEY",
+      "billing": "plan",
+      "routerOnly": true,
+      "models": []
+    }
+  },
+  "omniModel": ["stepfun/step-5-preview", "zai-coding-plan/GLM-5.3-Flash"],
+  "wideModel": ["stepfun/step-5-preview"],
+  "tiers": {
+    "quick": {
+      "target": "stepfun/step-3.7-flash",
+      "fallbacks": []
+    },
+    "standard_code": {
+      "target": "stepfun/step-5-preview",
+      "fallbacks": ["stepfun/step-3.7-flash"]
+    },
+    "hard": {
+      "target": "stepfun/step-5-preview",
+      "fallbacks": []
+    },
+    "prose": {
+      "target": "stepfun/step-5-preview",
+      "fallbacks": []
+    },
+    "deep_context": {
+      "target": "stepfun/step-5-preview",
+      "fallbacks": []
+    }
+  },
+  "profiles": {
+    "quick": { "workload": "quick" },
+    "code": { "workload": "standard_code" },
+    "hard": { "workload": "hard" },
+    "prose": { "workload": "prose" },
+    "long-context": { "workload": "deep_context" },
+    "vision": { "use": "omniModel" },
+    "mixture": { "use": "mixture" },
+    "deep": { "workload": "hard", "thinking": "deep" },
+    "bulk": { "workload": "quick", "thinking": "off" }
+  },
+  "mixture": {
+    "proposers": ["stepfun/step-5-preview", "zai-coding-plan/GLM-5.3-Flash"],
+    "aggregator": ["stepfun/step-5-preview", "zai-coding-plan/GLM-5.3-Flash"],
+    "proposerTimeoutMs": 240000
+  },
+  "routing": {
+    "wideChars": 1000000,
+    "minConfidence": 0.6,
+    "workflowMinConfidence": 0.4,
+    "defaultWorkload": "standard_code"
+  },
+  "judge": {
+    "mode": "cascade",
+    "fastino": {
+      "baseUrl": "http://127.0.0.1:8400",
+      "provider": "decide",
+      "timeoutMs": 2500
+    }
+  }
+}

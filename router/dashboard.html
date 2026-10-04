@@ -1,0 +1,1030 @@
+<!doctype html>
+<!--
+  agnostic-router dashboard — served by the router itself at /dashboard.
+
+  Self-contained on purpose: no CDN, no build step, no framework. The shell
+  carries no secrets; every /api call is made with the router's local token
+  (asked for once, kept in localStorage) behind the same Bearer gate the
+  proxy routes use. Edits never touch this file — the roster is the single
+  source of truth, and Save & Apply runs the kit's own pipeline server-side.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>auto-router · dashboard</title>
+<script>
+  // Theme before first paint: the saved choice wins, otherwise follow the OS.
+  try {
+    const t = localStorage.getItem("agnostic-router-theme");
+    document.documentElement.dataset.theme =
+      t === "light" || t === "dark" ? t
+      : matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  } catch {}
+</script>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0d1117; --panel: #161b22; --panel2: #1c2129; --line: #2a313c;
+    --text: #e6edf3; --dim: #8b949e; --faint: #6e7681;
+    --accent: #4f8cc9; --ok: #3fb950; --warn: #d29922; --err: #f85149;
+    --chip: #21262d; --scrim: rgba(1, 4, 9, .82);
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #ffffff; --panel: #f6f8fa; --panel2: #ffffff; --line: #d0d7de;
+    --text: #1f2328; --dim: #57606a; --faint: #6e7781;
+    --accent: #0969da; --ok: #1a7f37; --warn: #9a6700; --err: #cf222e;
+    --chip: #eaeef2; --scrim: rgba(255, 255, 255, .75);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+  body { font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  code, .num, td.n, input[type="text"], input[type="number"] { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  a { color: var(--accent); }
+
+  header { display: flex; align-items: center; gap: 14px; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 5; }
+  header h1 { font-size: 15px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+  header h1 span { color: var(--dim); font-weight: 400; }
+  .pill { font-size: 11px; padding: 2px 9px; border-radius: 20px; border: 1px solid var(--line); color: var(--dim); white-space: nowrap; }
+  .pill.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
+  .pill.err { color: var(--err); border-color: color-mix(in srgb, var(--err) 45%, transparent); }
+  .pill.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+  header .spacer { flex: 1; }
+  label.autoref { color: var(--dim); font-size: 12px; display: flex; gap: 6px; align-items: center; user-select: none; }
+  button.theme { appearance: none; background: none; border: 1px solid var(--line); color: var(--dim); border-radius: 20px; font-size: 13px; line-height: 1; padding: 3px 10px; cursor: pointer; }
+  button.theme:hover { color: var(--text); border-color: var(--accent); }
+
+  nav { display: flex; gap: 2px; padding: 0 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  nav button { appearance: none; background: none; border: none; border-bottom: 2px solid transparent; color: var(--dim); font: inherit; padding: 9px 14px; cursor: pointer; }
+  nav button.on { color: var(--text); border-bottom-color: var(--accent); }
+
+  main { padding: 18px 20px 60px; max-width: 1180px; margin: 0 auto; }
+  section.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; }
+  section.panel > h2 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--dim); font-weight: 600; }
+  section.panel .sub { color: var(--faint); font-size: 12px; margin: -6px 0 10px; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+  .card { background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; padding: 10px 12px; }
+  .card .k { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .6px; }
+  .card .v { font-size: 20px; font-weight: 650; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .card .s { color: var(--faint); font-size: 11px; margin-top: 1px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th { text-align: left; color: var(--dim); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; padding: 5px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  td { padding: 5px 8px; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.dim, .dim { color: var(--dim); }
+  .bar { position: relative; background: var(--chip); border-radius: 4px; height: 14px; min-width: 60px; overflow: hidden; }
+  .bar i { position: absolute; inset: 0 auto 0 0; background: color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 4px; }
+  .bar span { position: absolute; inset: 0; display: flex; align-items: center; padding: 0 6px; font-size: 10.5px; color: var(--text); }
+
+  .chip { display: inline-block; background: var(--chip); border: 1px solid var(--line); color: var(--dim); border-radius: 4px; padding: 1px 7px; font-size: 11px; margin: 1px 3px 1px 0; font-family: ui-monospace, Menlo, monospace; }
+  .badge { display: inline-block; border-radius: 4px; padding: 1px 7px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .5px; border: 1px solid var(--line); color: var(--dim); }
+  .badge.plan { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
+  .badge.payg { color: var(--err); border-color: color-mix(in srgb, var(--err) 40%, transparent); }
+  .badge.ro { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+
+  input[type="text"], input[type="number"], select {
+    background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px;
+    padding: 5px 8px; font-size: 12.5px; outline: none; min-width: 0;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+  input.bad { border-color: var(--err); }
+  button.btn { appearance: none; background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 13px; font: inherit; cursor: pointer; }
+  button.btn:hover { border-color: var(--accent); }
+  button.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.btn.danger { color: var(--err); border-color: color-mix(in srgb, var(--err) 40%, transparent); }
+  button.btn:disabled { opacity: .5; cursor: default; }
+  button.x { appearance: none; border: none; background: none; color: var(--faint); cursor: pointer; font-size: 13px; padding: 0 4px; }
+  button.x:hover { color: var(--err); }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .field { display: flex; flex-direction: column; gap: 3px; }
+  .field > label { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+  .field input, .field select { width: 100%; }
+  .hint { color: var(--faint); font-size: 11px; }
+
+  pre.out { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px; font-size: 11.5px; max-height: 260px; overflow: auto; white-space: pre-wrap; color: var(--dim); }
+  pre.out.good { color: var(--ok); }
+  pre.out.bad { color: var(--err); }
+
+  #gate { position: fixed; inset: 0; background: var(--scrim); display: flex; align-items: center; justify-content: center; z-index: 50; }
+  #gate .box { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 22px; width: 380px; }
+  #gate h2 { margin: 0 0 6px; font-size: 15px; }
+  #gate p { color: var(--dim); font-size: 12.5px; margin: 0 0 12px; }
+  #gate input { width: 100%; }
+  #gate .err { color: var(--err); font-size: 12px; margin-top: 8px; min-height: 15px; }
+  .hidden { display: none !important; }
+  .toast { position: fixed; bottom: 18px; right: 18px; background: var(--panel2); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px; padding: 10px 14px; font-size: 12.5px; z-index: 40; max-width: 380px; }
+  .toast.bad { border-left-color: var(--err); }
+  .mono-list { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+  .qcard { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>auto-router <span>· model roster &amp; delegation</span></h1>
+  <span id="healthPill" class="pill">connecting…</span>
+  <span id="guardPill" class="pill"></span>
+  <span class="spacer"></span>
+  <label class="autoref"><input type="checkbox" id="autoRef" checked> auto-refresh</label>
+  <button class="theme" id="themeToggle" type="button" aria-label="Toggle light/dark theme">☀</button>
+</header>
+
+<nav>
+  <button data-tab="usage" class="on">Usage</button>
+  <button data-tab="delegation">Delegation</button>
+  <button data-tab="providers">Providers</button>
+  <button data-tab="quota">Quota</button>
+  <button data-tab="workflows">Workflows</button>
+</nav>
+
+<main>
+  <!-- ══════════════════════════ USAGE ══════════════════════════ -->
+  <div id="tab-usage">
+    <section class="panel">
+      <h2>Totals</h2>
+      <div class="cards" id="totals"></div>
+      <div class="sub" id="totalsNote" style="margin-top:8px"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Tokens &amp; calls by model</h2>
+      <div class="sub">Every upstream call the router made, including losing mixture proposers — a prepaid plan pays for those too. Tokens shown only when the upstream reported them; the ledger never estimates.</div>
+      <table id="modelsTable"><thead><tr>
+        <th>Model</th><th class="n">Calls</th><th class="n">Err</th><th class="n">Prompt</th><th class="n">Completion</th><th class="n">Total</th><th style="width:180px">Share</th><th class="n">Last used</th>
+      </tr></thead><tbody></tbody></table>
+    </section>
+
+    <div class="grid2">
+      <section class="panel">
+        <h2>Delegation mix</h2>
+        <table id="execTable"></table>
+        <div class="sub" style="margin-top:8px" id="judgeNote"></div>
+    <section class="panel hidden" id="cascadePanel">
+      <h2>Cascade reconciliation <span class="hint" id="cascadeMode"></span></h2>
+      <div class="sub" id="cascadeBias">Measured only on escalations — the sample where GLiNER was least confident. Not a fair poll by construction.</div>
+      <table id="cascadeTable"><thead><tr><th>Question</th><th class="n">Agree</th><th class="n">Disagree</th><th class="n">Agree %</th><th class="n">Gate-rejected</th><th class="n">Abstained</th></tr></thead><tbody></tbody></table>
+      <div class="sub" id="cascadeCounts" style="margin-top:8px"></div>
+      <table id="disagreeTable" style="margin-top:8px"><thead><tr><th>When</th><th>Question</th><th>GLiNER picked</th><th>TypeSafe picked</th><th class="n">GLiNER conf</th></tr></thead><tbody></tbody></table>
+    </section>
+      </section>
+      <section class="panel">
+        <h2>Recent days</h2>
+        <table id="daysTable"><thead><tr><th>Day</th><th class="n">Calls</th><th class="n">Prompt</th><th class="n">Completion</th></tr></thead><tbody></tbody></table>
+      </section>
+    </div>
+
+    <section class="panel">
+      <h2>Recent requests <button class="btn" id="resetUsage" style="float:right">Reset counters</button></h2>
+      <div class="sub">Last 100 routed calls, newest first. Message content is never recorded — only routing metadata and usage.</div>
+      <table id="recentTable"><thead><tr>
+        <th>Time</th><th>Requested</th><th>Workload</th><th>Exec</th><th>Model</th><th class="n">ms</th><th class="n">P / C tok</th><th class="n">Status</th><th>Reason</th>
+      </tr></thead><tbody></tbody></table>
+    </section>
+  </div>
+
+  <!-- ══════════════════════════ DELEGATION ══════════════════════════ -->
+  <div id="tab-delegation" class="hidden">
+    <section class="panel">
+      <h2>Spend guard</h2>
+      <div class="row">
+        <label class="autoref"><input type="checkbox" id="allowPayg"> route to pay-per-token providers</label>
+        <span id="paygProviders" class="mono-list dim"></span>
+      </div>
+      <div class="sub" id="paygNote" style="margin-top:8px"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Workload tiers</h2>
+      <div class="sub">The judge's workloads map here. Target is tried first; fallbacks run in order when a provider is disabled, its key is missing, or it bills per token while the guard is on. The resolved column is what the router is using <em>right now</em>.</div>
+      <table id="tiersTable"><thead><tr><th style="width:130px">Tier</th><th>Target</th><th>Fallbacks (ordered, comma-separated)</th><th style="width:210px">Resolved now</th></tr></thead><tbody></tbody></table>
+    </section>
+
+    <div class="grid2">
+      <section class="panel">
+        <h2>Capability chains</h2>
+        <div class="sub">Ordered candidates; first usable wins. Multimodal parts take the omni chain, payloads past the wide threshold take the wide chain.</div>
+        <div class="field"><label>omniModel</label><input type="text" id="omniModel"></div>
+        <div class="field" style="margin-top:8px"><label>wideModel</label><input type="text" id="wideModel"></div>
+        <div class="field" style="margin-top:8px"><label>wideChars threshold</label><input type="number" id="wideChars" min="1000"></div>
+      </section>
+      <section class="panel">
+        <h2>Mixture of agents</h2>
+        <div class="sub">Parallel proposers, one judgment to pick the best (and whether merging adds value), aggregator only when it does. Token cost: every proposer is billed, winners or not.</div>
+        <div class="field"><label>Proposers (ordered)</label><input type="text" id="mixProposers"></div>
+        <div class="field" style="margin-top:8px"><label>Aggregator (ordered)</label><input type="text" id="mixAggregator"></div>
+        <div class="field" style="margin-top:8px"><label>Proposer timeout (ms)</label><input type="number" id="mixTimeout" min="1000" step="1000"></div>
+      </section>
+    </div>
+
+    <section class="panel">
+      <h2>Judge thresholds &amp; defaults</h2>
+      <div class="row">
+        <div class="field"><label>default workload</label><select id="defaultWorkload"></select></div>
+        <div class="field"><label>min confidence</label><input type="number" id="minConfidence" min="0" max="1" step="0.05"></div>
+        <div class="field"><label>workflow min confidence</label><input type="number" id="wfMinConfidence" min="0" max="1" step="0.05"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Picker profiles</h2>
+      <div class="sub">Named model ids any OpenAI-compatible client can pin. <code>workload</code> pins a tier with no judgment; <code>omniModel</code> / <code>mixture</code> force the chain or the fan-out.</div>
+      <table id="profilesTable"><thead><tr><th style="width:200px">Profile id</th><th>Maps to</th><th style="width:130px">Thinking</th><th style="width:40px"></th></tr></thead><tbody></tbody></table>
+      <div class="sub" style="margin-top:6px">Thinking: <b>auto</b> strips reasoning params (the judge already matches effort to the task), <b>deep</b> forces the provider's thinking mode on, <b>off</b> forces it off — pair it with a cheap tier for bulk delegation.</div>
+      <button class="btn" id="addProfile" style="margin-top:8px">Add profile</button>
+    </section>
+
+    <section class="panel hidden" id="suggestPanel">
+      <h2>Suggested distribution</h2>
+      <div class="sub" id="suggestBasis"></div>
+      <table id="suggestTable"><thead><tr><th style="width:150px">Slot</th><th>Current</th><th>Suggested</th><th>Why</th><th style="width:70px">Confidence</th></tr></thead><tbody></tbody></table>
+      <div class="sub" id="suggestNotes" style="margin-top:8px"></div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn primary" id="suggestApply">Apply suggestion</button>
+        <button class="btn" id="suggestDismiss">Dismiss</button>
+        <span class="hint">Applying loads the suggested values into the editor above — nothing is saved until you run Save &amp; apply.</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="row">
+        <button class="btn" id="suggestBtn">✦ Suggest distribution</button>
+        <button class="btn primary" id="saveRoster">Save &amp; apply</button>
+        <button class="btn" id="revertRoster">Revert</button>
+        <a class="btn" id="downloadRoster" download="roster.json">Download roster.json</a>
+        <span class="hint" id="saveState"></span>
+      </div>
+      <pre class="out hidden" id="applyOut"></pre>
+    </section>
+  </div>
+
+  <!-- ══════════════════════════ PROVIDERS ══════════════════════════ -->
+  <div id="tab-providers" class="hidden">
+    <section class="panel">
+      <h2>Providers</h2>
+      <div class="sub">Enable/disable is a roster edit (Save &amp; apply on the Delegation tab lands it). Keys are env-var references on purpose — set them with <code>kit env set</code>, never in the UI, never in the roster.</div>
+      <table id="providersTable"><thead><tr>
+        <th>Provider</th><th>Billing</th><th>Key</th><th>Enabled</th><th>Models</th>
+      </tr></thead><tbody></tbody></table>
+    </section>
+  </div>
+
+  <!-- ══════════════════════════ QUOTA ══════════════════════════ -->
+  <div id="tab-quota" class="hidden">
+    <section class="panel">
+      <h2>Plan quota &amp; steering</h2>
+      <div class="sub">No plan provider exposes a quota API (probed — no headers, no balance endpoints), so allowances are <b>estimates</b>: derived from your console readings through the weighted ledger, or declared outright. Off-peak hours count at their declared weight. Headroom drives steering — a tier diverts to its next candidate when the current one drops below <span id="quotaThreshold" class="mono-list"></span> headroom, and only within that tier's own chain. Providers without a declaration are neutral: never steered away from.</div>
+      <div class="grid2" id="quotaCards" style="margin-top:12px"></div>
+      <div class="sub" id="quotaNeutral" style="margin-top:12px"></div>
+    </section>
+  </div>
+
+  <!-- ══════════════════════════ WORKFLOWS ══════════════════════════ -->
+  <div id="tab-workflows" class="hidden">
+    <section class="panel">
+      <h2>Delegation registry</h2>
+      <div class="sub">What the judge may assign, and the shape text it matches against. Both are roster-owned and override the workflow's own frontmatter, so editing here is authoritative. <b>Authoring the workflows themselves lives outside the router</b> (the kit's <code>workflows/</code> directory) — this tab tunes assignment only. ↺ drops an override so the value falls back to library derivation.</div>
+      <table id="workflowsTable">
+        <thead><tr>
+          <th style="width:200px">Workflow</th>
+          <th style="width:74px">Assignable</th>
+          <th style="width:118px">Task arg</th>
+          <th>Judge's shape</th>
+          <th style="width:140px">Defaults (JSON)</th>
+          <th style="width:104px">Assigned</th>
+          <th style="width:26px"></th>
+        </tr></thead><tbody></tbody>
+      </table>
+      <div class="row" style="margin-top:10px"><span class="hint" id="registrySummary"></span></div>
+    </section>
+  </div>
+</main>
+
+<div id="gate" class="hidden">
+  <div class="box">
+    <h2>Router token</h2>
+    <p>The dashboard reads and writes through the same token any client uses for the router (<code>router.config.json → localToken</code>, or <code>kit status</code>). It stays in this browser's localStorage.</p>
+    <input type="password" id="gateToken" placeholder="local token" autocomplete="off">
+    <div class="err" id="gateErr"></div>
+    <button class="btn primary" id="gateGo" style="width:100%">Unlock dashboard</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = (s, el) => (el ?? document).querySelector(s);
+const $$ = (s, el) => Array.from((el ?? document).querySelectorAll(s));
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+const TOKEN_KEY = "agnostic-router-token";
+// The server stamps the current local token here when serving the page. That
+// is a deliberate trade: the page is a same-origin operator console on
+// 127.0.0.1 — web pages cannot read the cross-origin response, and any local
+// process can read config.json anyway — while the proxy routes keep their
+// token gate (that gate is what stops other local processes from spending
+// your prepaid plans). The injected token wins over stale localStorage so a
+// wrong saved value self-heals on reload.
+const INJECTED_TOKEN = "";
+// Quota tab is dormant until real console readings exist to calibrate against —
+// flip to true to re-enable it. Steering itself stays active server-side for
+// any provider whose roster declares quota.
+const SHOW_QUOTA_TAB = false;
+let token = INJECTED_TOKEN || localStorage.getItem(TOKEN_KEY) || "";
+let state = null;       // /api/state payload
+let usage = null;       // /api/usage payload
+let roster = null;      // editable deep copy
+let tab = "usage";
+let timer = null;
+
+const fmtInt = (n) => (Number.isFinite(n) ? n.toLocaleString("en-US") : "—");
+const fmtTok = (n) => {
+  if (!Number.isFinite(n)) return "—";
+  if (n < 1000) return String(n);
+  if (n < 1e6) return (n / 1e3).toFixed(n < 1e4 ? 1 : 0) + "k";
+  return (n / 1e6).toFixed(2) + "M";
+};
+const ago = (ts) => {
+  if (!ts) return "never";
+  const s = Math.max(0, (Date.now() - ts) / 1000);
+  if (s < 60) return `${Math.floor(s)}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+};
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    ...opts,
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...(opts.headers ?? {}) },
+  });
+  if (res.status === 401) {
+    // Nag only when a token was actually sent — the background poller runs
+    // before unlock too, and its 401s must not scribble on the gate.
+    if (token) showGate("Token rejected.");
+    throw new Error("unauthorized");
+  }
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(body.error ?? `HTTP ${res.status}`), { body });
+  return body;
+}
+
+/* ── token gate ─────────────────────────────────────────────── */
+function showGate(msg) {
+  $("#gateErr").textContent = msg ?? "";
+  $("#gate").classList.remove("hidden");
+  $("#gateToken").focus();
+}
+$("#gateGo").onclick = async () => {
+  token = $("#gateToken").value.trim();
+  try {
+    await api("/api/state");
+    localStorage.setItem(TOKEN_KEY, token);
+    $("#gate").classList.add("hidden");
+    loadAll();
+  } catch (e) { if (e.message !== "unauthorized") $("#gateErr").textContent = e.message; }
+};
+$("#gateToken").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#gateGo").click(); });
+
+/* ── theme ──────────────────────────────────────────────────── */
+const THEME_KEY = "agnostic-router-theme";
+// The head script set the theme before paint (saved choice, else the OS);
+// here we only wire the toggle. The button shows where a click lands —
+// a sun while dark, a moon while light.
+function applyTheme(t) {
+  document.documentElement.dataset.theme = t;
+  $("#themeToggle").textContent = t === "light" ? "☾" : "☀";
+  $("#themeToggle").title = t === "light" ? "Switch to dark" : "Switch to light";
+}
+$("#themeToggle").onclick = () => {
+  const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+  try { localStorage.setItem(THEME_KEY, next); } catch {}
+  applyTheme(next);
+};
+applyTheme(document.documentElement.dataset.theme === "light" ? "light" : "dark");
+
+/* ── tabs + refresh ─────────────────────────────────────────── */
+if (!SHOW_QUOTA_TAB) document.querySelector('nav button[data-tab="quota"]')?.classList.add("hidden");
+$$("nav button").forEach((b) => (b.onclick = () => {
+  tab = b.dataset.tab;
+  $$("nav button").forEach((x) => x.classList.toggle("on", x === b));
+  $$("main > div").forEach((d) => d.classList.toggle("hidden", d.id !== `tab-${tab}`));
+  loadAll();
+}));
+$("#autoRef").onchange = () => setTimer();
+function setTimer() {
+  clearInterval(timer);
+  if ($("#autoRef").checked) timer = setInterval(() => { if (tab === "usage") refreshUsage(); }, 5000);
+}
+
+async function loadAll() {
+  try {
+    const [st, us] = await Promise.all([api("/api/state"), api("/api/usage")]);
+    state = st; usage = us;
+    if (!roster && st.roster && !st.roster.error) roster = JSON.parse(JSON.stringify(st.roster));
+    $("#healthPill").textContent = `healthy · :${st.port}`;
+    $("#healthPill").className = "pill ok";
+    renderGuard();
+    render();
+  } catch (e) {
+    if (e.message !== "unauthorized") { $("#healthPill").textContent = "unreachable"; $("#healthPill").className = "pill err"; }
+  }
+}
+async function refreshUsage() {
+  try { usage = await api("/api/usage"); if (tab === "usage") renderUsage(); } catch {}
+}
+
+/* ── shared: known targets + validation ─────────────────────── */
+function knownTargets() {
+  const set = new Set();
+  const add = (t) => { if (typeof t === "string" && /^[^/\s]+\/[^/\s]+$/.test(t)) set.add(t); };
+  for (const [pid, p] of Object.entries(state?.roster?.providers ?? {})) for (const m of p.models ?? []) add(`${pid}/${m}`);
+  const r = roster ?? {};
+  for (const t of Object.values(r.tiers ?? {})) { add(t?.target); for (const f of t?.fallbacks ?? []) add(f); }
+  for (const k of ["omniModel", "wideModel"]) for (const t of [].concat(r[k] ?? [])) add(t);
+  const mix = r.mixture ?? {};
+  for (const t of mix.proposers ?? []) add(t);
+  for (const t of [].concat(mix.aggregator ?? [])) add(t);
+  for (const w of Object.values(state?.resolved?.workloads ?? {})) { add(`${w.providerId}/${w.model}`); }
+  return set;
+}
+function providerExists(id) {
+  // /api/state returns the FULL roster — providers keyed by id.
+  return Boolean((state?.roster?.providers ?? {})[id]);
+}
+function targetProblem(t) {
+  if (!/^[^/\s]+\/[^/\s]+$/.test(t ?? "")) return "want providerId/modelId";
+  if (!providerExists((t ?? "").split("/")[0])) return "unknown provider";
+  return null;
+}
+function chainProblem(text) {
+  const items = parseChain(text);
+  if (!items.length) return "at least one target";
+  for (const t of items) { const p = targetProblem(t); if (p) return `${t}: ${p}`; }
+  return null;
+}
+const parseChain = (text) => String(text ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+const chainStr = (v) => [].concat(v ?? []).join(", ");
+
+/* ── render: guard pill ─────────────────────────────────────── */
+function renderGuard() {
+  const g = state.guard ?? {};
+  const pill = $("#guardPill");
+  if (g.allowPayg) { pill.textContent = "payg ALLOWED"; pill.className = "pill err"; }
+  else {
+    const n = (g.paygProviders ?? []).length;
+    pill.textContent = n ? `payg blocked · ${n} provider${n === 1 ? "" : "s"}` : "payg blocked";
+    pill.className = "pill ok";
+  }
+}
+
+/* ── render: usage ──────────────────────────────────────────── */
+function renderUsage() {
+  if (!usage) return;
+  const t = usage.totals ?? {};
+  $("#totals").innerHTML = [
+    ["Calls", fmtInt(t.calls), `${fmtInt(t.ok)} ok · ${fmtInt(t.errors)} failed`],
+    ["Prompt tok", fmtTok(t.promptTokens), `reported on ${fmtInt(t.tokensKnown)} calls`],
+    ["Completion tok", fmtTok(t.completionTokens), ""],
+    ["Total tok", fmtTok(t.totalTokens), ""],
+    ["Failed requests", fmtInt(t.failedRequests), "never reached a model"],
+    ["Judge", `${fmtInt(usage.judge?.fresh ?? 0)} fresh`, `${fmtInt(usage.judge?.cached ?? 0)} cached · ${fmtInt(usage.judge?.errors ?? 0)} err`],
+  ].map(([k, v, s]) => `<div class="card"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div><div class="s">${esc(s)}</div></div>`).join("");
+  $("#totalsNote").textContent = `ledger started ${ago(usage.startedAt)} · this process ${ago(usage.bootAt)} · counters live in router/logs/usage.json`;
+
+  const max = Math.max(1, ...(usage.models ?? []).map((m) => m.totalTokens || m.calls));
+  $("#modelsTable tbody").innerHTML = (usage.models ?? []).map((m) => {
+    const share = (m.totalTokens || m.calls) / max;
+    const label = m.totalTokens ? fmtTok(m.totalTokens) + " tok" : fmtInt(m.calls) + " calls (no usage reported)";
+    return `<tr>
+      <td class="mono-list">${esc(m.key)}</td>
+      <td class="n">${fmtInt(m.calls)}</td>
+      <td class="n" ${m.errors ? 'style="color:var(--err)"' : ""}>${m.errors ? fmtInt(m.errors) : "0"}</td>
+      <td class="n">${fmtTok(m.promptTokens)}</td>
+      <td class="n">${fmtTok(m.completionTokens)}</td>
+      <td class="n">${fmtTok(m.totalTokens)}</td>
+      <td><div class="bar"><i style="width:${(share * 100).toFixed(1)}%"></i><span>${esc(label)}</span></div></td>
+      <td class="n dim">${ago(m.lastUsedAt)}</td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="8" class="dim">no upstream calls yet — send something through the router</td></tr>`;
+
+  const e = usage.executions ?? {};
+  const d = usage.delegations ?? {};
+  $("#execTable").innerHTML = [
+    ["single — one focused call", e.single ?? 0],
+    ["mixture — parallel proposers + judge", e.mixture ?? 0],
+    ["swarm — delegated to the workflow library", e.swarm ?? 0],
+  ].map(([k, v]) => `<tr><td>${esc(k)}</td><td class="n">${fmtInt(v)}</td></tr>`).join("")
+  + `<tr><td class="dim">/route verdicts (delegation decisions)</td><td class="n">${fmtInt((d.single ?? 0) + (d.mixture ?? 0) + (d.swarm ?? 0))}</td></tr>`
+  + `<tr><td class="dim">verdicts that assigned a workflow</td><td class="n">${fmtInt(d.withWorkflow ?? 0)}</td></tr>`;
+  const bk = usage.judge?.backends ?? {};
+  const backendTxt = Object.keys(bk).length
+    ? "judge backends: " + Object.entries(bk).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${fmtInt(v)}`).join(" · ") + " · "
+    : "";
+  const w = usage.workloads ?? {};
+  renderCascade();
+    $("#judgeNote").textContent = backendTxt + "workloads: " + (Object.keys(w).length
+    ? Object.entries(w).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${fmtInt(v)}`).join(" · ")
+    : "none yet");
+
+  $("#daysTable tbody").innerHTML = (usage.days ?? []).map((day) => `
+    <tr><td>${esc(day.day)}</td><td class="n">${fmtInt(day.calls)}</td><td class="n">${fmtTok(day.promptTokens)}</td><td class="n">${fmtTok(day.completionTokens)}</td></tr>`).join("")
+    || `<tr><td colspan="4" class="dim">no days recorded yet</td></tr>`;
+
+  $("#recentTable tbody").innerHTML = (usage.recent ?? []).map((r) => {
+    const model = r.providerId && r.model ? `${r.providerId}/${r.model}` : "—";
+    const tok = (r.promptTokens ?? r.completionTokens) != null ? `${r.promptTokens ?? "—"} / ${r.completionTokens ?? "—"}` : "—";
+    const stat = r.status == null ? "—" : r.status;
+    return `<tr>
+      <td class="dim">${new Date(r.at).toLocaleTimeString()}</td>
+      <td class="mono-list">${esc(r.requested ?? "auto")}</td>
+      <td>${esc(r.workload ?? "—")}</td>
+      <td>${esc(r.execution ?? "single")}</td>
+      <td class="mono-list">${esc(model)}</td>
+      <td class="n">${r.ms != null ? fmtInt(r.ms) : "—"}</td>
+      <td class="n">${esc(tok)}</td>
+      <td class="n" ${r.status >= 400 ? 'style="color:var(--err)"' : ""}>${esc(String(stat))}</td>
+      <td class="dim">${esc(r.reason ?? "")}</td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="9" class="dim">nothing routed yet</td></tr>`;
+}
+
+$("#resetUsage").onclick = async () => {
+  if (!confirm("Zero the usage ledger? Recent requests are cleared; the router.log history is untouched.")) return;
+  try { usage = await api("/api/usage/reset", { method: "POST" }); renderUsage(); } catch (e) { toast(e.message, true); }
+};
+
+/* ── render: delegation editor ──────────────────────────────── */
+function renderDelegation() {
+  const r = roster ?? {};
+  const conf = state.resolved ?? {};
+
+  $("#allowPayg").checked = Boolean(r.allowPayg);
+  const payg = (state.guard?.paygProviders ?? []);
+  $("#paygProviders").textContent = payg.length ? `pay-per-token: ${payg.join(", ")}` : "no pay-per-token providers in the roster";
+  $("#paygNote").textContent = "The guard is structural: with payg off, apply refuses any tier or chain that lands on a pay-per-token provider and falls back down the chain instead. This switch is your standing no-payg constraint — leave it off.";
+
+  const tt = $("#tiersTable tbody");
+  tt.innerHTML = "";
+  for (const [name, tier] of Object.entries(r.tiers ?? {})) {
+    const resolved = conf.workloads?.[name];
+    const resTxt = resolved ? `${resolved.providerId}/${resolved.model}` : "unresolvable";
+    const remapped = resolved && resolved.providerId + "/" + resolved.model !== tier.target;
+    tt.insertAdjacentHTML("beforeend", `<tr>
+      <td class="mono-list">${esc(name)}</td>
+      <td><input type="text" data-tier="${esc(name)}" data-field="target" value="${esc(tier.target ?? "")}" list="targets" style="width:100%"></td>
+      <td><input type="text" data-tier="${esc(name)}" data-field="fallbacks" value="${esc(chainStr(tier.fallbacks))}" list="targets" style="width:100%"></td>
+      <td class="mono-list" ${remapped ? 'style="color:var(--warn)"' : 'style="color:var(--ok)"'}>${esc(resTxt)}${remapped ? " · remapped" : ""}</td>
+    </tr>`);
+  }
+  $("#omniModel").value = chainStr(r.omniModel);
+  $("#wideModel").value = chainStr(r.wideModel);
+  $("#wideChars").value = r.routing?.wideChars ?? "";
+  $("#mixProposers").value = chainStr(r.mixture?.proposers);
+  $("#mixAggregator").value = chainStr(r.mixture?.aggregator);
+  $("#mixTimeout").value = r.mixture?.proposerTimeoutMs ?? "";
+
+  $("#defaultWorkload").innerHTML = Object.keys(r.tiers ?? {}).map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
+  $("#defaultWorkload").value = r.routing?.defaultWorkload ?? "";
+  $("#minConfidence").value = r.routing?.minConfidence ?? "";
+  $("#wfMinConfidence").value = r.routing?.workflowMinConfidence ?? "";
+
+  renderProfiles();
+
+  const dl = $("#downloadRoster");
+  dl.href = "data:application/json," + encodeURIComponent(JSON.stringify(r, null, 2));
+
+  // target suggestions
+  let dl2 = $("#targets");
+  if (!dl2) { dl2 = document.createElement("datalist"); dl2.id = "targets"; document.body.append(dl2); }
+  dl2.innerHTML = [...knownTargets()].sort().map((t) => `<option value="${esc(t)}">`).join("");
+}
+
+function renderProfiles() {
+  const r = roster ?? {};
+  const tb = $("#profilesTable tbody");
+  tb.innerHTML = "";
+  const tierOpts = Object.keys(r.tiers ?? {}).map((n) => `<option value="workload:${esc(n)}">${esc(n)} (tier)</option>`).join("");
+  const options = `<option value="">— choose —</option>${tierOpts}<option value="use:omniModel">omniModel chain</option><option value="use:mixture">mixture fan-out</option>`;
+  const thinkOpts = (cur) => ["auto", "off", "deep"].map((lv) => `<option value="${lv}" ${((cur ?? "auto") === lv) ? "selected" : ""}>${lv === "auto" ? "auto (judge decides)" : lv === "deep" ? "deep — thinking forced on" : "off — thinking forced off"}</option>`).join("");
+  for (const [name, p] of Object.entries(r.profiles ?? {})) {
+    const val = p.workload ? `workload:${p.workload}` : p.use ? `use:${p.use}` : "";
+    tb.insertAdjacentHTML("beforeend", `<tr>
+      <td><input type="text" data-profile="${esc(name)}" data-field="name" value="${esc(name)}"></td>
+      <td><select data-profile="${esc(name)}" data-field="map">${options}</select></td>
+      <td><select data-profile="${esc(name)}" data-field="thinking">${thinkOpts(p.thinking)}</select></td>
+      <td><button class="x" data-del-profile="${esc(name)}" title="remove profile">✕</button></td>
+    </tr>`);
+    const sel = $(`select[data-profile="${CSS.escape(name)}"][data-field="map"]`);
+    sel.value = val;
+  }
+}
+$("#addProfile").onclick = () => {
+  const base = "new-profile";
+  let name = base, i = 2;
+  while (roster.profiles[name]) name = `${base}-${i++}`;
+  roster.profiles[name] = { workload: Object.keys(roster.tiers ?? {})[0] ?? undefined };
+  renderProfiles();
+};
+
+/* ── render: delegation registry (workflows) ────────────────── */
+const wfStats = (name) => (usage?.workflowStats ?? {})[name] ?? { assigned: 0, followUp: 0, lastAt: null, lastConf: null };
+function wfEntry(name) {
+  roster.workflows ??= {};
+  roster.workflows.registry ??= {};
+  return roster.workflows.registry[name] ?? (roster.workflows.registry[name] = {});
+}
+function pruneEntry(name) {
+  const e = roster.workflows?.registry?.[name];
+  if (e && !Object.keys(e).length) delete roster.workflows.registry[name];
+}
+
+function renderWorkflows() {
+  const lib = state?.resolved?.workflowLibrary ?? [];
+  const tb = $("#workflowsTable tbody");
+  if (!lib.length) {
+    // Old config without the library view: degrade to the read-only catalog.
+    const wfs = state?.resolved?.workflows ?? [];
+    tb.innerHTML = wfs.map((w) => `
+      <tr><td class="mono-list">${esc(w.name)}</td>
+      <td class="n dim">✓</td><td class="mono-list">${esc(w.taskArg ?? "task")}</td>
+      <td class="dim">${esc(w.shape ?? "")}</td><td class="dim">—</td><td class="n dim">—</td><td></td></tr>`).join("")
+      || `<tr><td colspan="7" class="dim">no workflows registered</td></tr>`;
+    $("#registrySummary").textContent = "read-only view — run `kit apply` to load the editable library";
+    return;
+  }
+  tb.innerHTML = "";
+  const rows = [...lib].sort((a, b) => (b.registered - a.registered) || a.name.localeCompare(b.name));
+  let assignable = 0;
+  let overrides = 0;
+  for (const wf of rows) {
+    if (wf.registered) assignable++;
+    if (wf.overridden) overrides++;
+    const entry = roster?.workflows?.registry?.[wf.name] ?? {};
+    const assignableNow = wf.registered && entry.enabled !== false;
+    const effectiveShape = entry.shape ?? wf.shape ?? "";
+    const effectiveArg = entry.taskArg ?? wf.taskArg ?? wf.autoArg ?? "";
+    const st = wfStats(wf.name);
+    const assignedTxt = st.assigned + st.followUp
+      ? `${fmtInt(st.assigned)} + ${fmtInt(st.followUp)} fu · ${ago(st.lastAt)}`
+      : "never";
+    const canDerive = (wf.args ?? []).length > 0;
+    const argOpts = (wf.args ?? []).map((a) => `<option value="${esc(a.name)}">${esc(a.name)}${a.required ? "" : " (opt)"}</option>`).join("");
+    const why = wf.registered ? "" : `<div class="hint" style="color:var(--warn)">${esc(wf.skipReason ?? "")}</div>`;
+    tb.insertAdjacentHTML("beforeend", `<tr style="${wf.registered ? "" : "opacity:.62"}">
+      <td><div class="mono-list">${esc(wf.name)}</div>${why}</td>
+      <td><input type="checkbox" data-wf-assignable="${esc(wf.name)}" ${assignableNow ? "checked" : ""}></td>
+      <td><select data-wf-arg="${esc(wf.name)}" ${canDerive ? "" : "disabled"}>${argOpts}</select></td>
+      <td><input type="text" data-wf-shape="${esc(wf.name)}" value="${esc(effectiveShape)}" placeholder="${esc((wf.whenToUse || wf.description || "").slice(0, 90))}" style="width:100%">
+          <div class="hint" style="margin-top:2px">library: ${esc((wf.whenToUse || wf.description || "—").slice(0, 110))}</div></td>
+      <td><input type="text" data-wf-defaults="${esc(wf.name)}" value="${wf.defaults ? esc(JSON.stringify(wf.defaults)) : ""}" placeholder="{}" style="width:100%"></td>
+      <td class="n ${st.assigned + st.followUp ? "" : "dim"}">${esc(assignedTxt)}</td>
+      <td>${wf.overridden ? `<button class="x" data-wf-reset="${esc(wf.name)}" title="drop override — fall back to library derivation">↺</button>` : ""}</td>
+    </tr>`);
+    const sel = $(`select[data-wf-arg="${CSS.escape(wf.name)}"]`);
+    if (sel && effectiveArg) sel.value = effectiveArg;
+  }
+  $("#registrySummary").textContent = `${assignable} assignable · ${lib.length - assignable} hand-launched · ${overrides} roster override${overrides === 1 ? "" : "s"} — assignment outcomes since the ledger began`;
+}
+
+/* ── render: providers ──────────────────────────────────────── */
+function renderProviders() {
+  const entries = Object.entries(state?.roster?.providers ?? {});
+  $("#providersTable tbody").innerHTML = entries.map(([id, p]) => `
+    <tr>
+      <td><div>${esc(p.providerName ?? id)}</div><div class="hint mono-list">${esc(id)}</div></td>
+      <td><span class="badge ${esc(p.billing ?? "plan")}">${esc(p.billing ?? "plan")}</span>${p.routerOnly ? ' <span class="badge ro">router-only</span>' : ""}</td>
+      <td class="mono-list" style="color:${p.hasKey ? "var(--ok)" : "var(--err)"}">${p.hasKey ? "✓" : "✗"} <span class="dim">${esc(p.apiKeyEnv ?? "inline")}</span></td>
+      <td><input type="checkbox" data-prov="${esc(id)}" ${p.enabled !== false ? "checked" : ""}></td>
+      <td>${(p.models ?? []).map((m) => `<span class="chip">${esc(m)}</span>`).join("") || '<span class="dim">none registered</span>'}</td>
+    </tr>`).join("");
+}
+
+/* ── render: cascade reconciliation ─────────────────────────── */
+function renderCascade() {
+  const c = usage?.cascade;
+  const mode = state?.judge?.mode ?? "typesafe";
+  const panel = $("#cascadePanel");
+  const relevant = mode !== "typesafe" || (c && (c.escalations > 0 || c.compared > 0));
+  panel.classList.toggle("hidden", !relevant);
+  if (!relevant) return;
+  $("#cascadeMode").textContent = `judge mode: ${mode}`;
+  const qs = c?.questions ?? {};
+  const rows = Object.entries(qs).map(([name, q]) => {
+    const decided = q.agree + q.disagree;
+    const pct = decided ? Math.round((q.agree / decided) * 100) + "%" : "—";
+    return `<tr><td class="mono-list">${esc(name)}</td><td class="n">${fmtInt(q.agree)}</td><td class="n">${fmtInt(q.disagree)}</td><td class="n">${pct}</td><td class="n">${fmtInt(q.gateRejected)}</td><td class="n">${fmtInt(q.abstain)}</td></tr>`;
+  });
+  $("#cascadeTable tbody").innerHTML = rows.join("");
+  $("#cascadeCounts").textContent = `escalations: ${fmtInt(c?.escalations ?? 0)} · compared: ${fmtInt(c?.compared ?? 0)} · cold: ${fmtInt(c?.cold ?? 0)} · failed: ${fmtInt(c?.failed ?? 0)} — cold and failed produce no GLiNER opinion, so they are counted but not compared`;
+  $("#disagreeTable tbody").innerHTML = (c?.disagreements ?? []).slice(0, 12).map((r) => `
+    <tr><td class="dim">${new Date(r.at).toLocaleString()}</td><td class="mono-list">${esc(r.question)}</td>
+    <td style="color:var(--warn)">${esc(r.fastino)}</td><td style="color:var(--ok)">${esc(r.typesafe)}</td>
+    <td class="n">${r.conf != null ? Math.round(r.conf * 100) + "%" : "—"}</td></tr>`).join("")
+    || `<tr><td colspan="5" class="dim">no disagreements recorded</td></tr>`;
+}
+
+/* ── render: quota ──────────────────────────────────────────── */
+function renderQuota() {
+  const q = state.quota ?? {};
+  $("#quotaThreshold").textContent = `${Math.round((q.minHeadroom ?? 0.4) * 100)}%`;
+  const declared = q.declared ?? [];
+  $("#quotaCards").innerHTML = declared.map((p) => {
+    const hr = Number.isFinite(p.headroom) ? p.headroom : null;
+    const win = p.kind === "rolling"
+      ? `rolling ${p.windowHours ?? 24}h`
+      : p.kind === "calendar"
+        ? `calendar (anchor ${p.windowStart ? new Date(p.windowStart).toISOString().slice(0, 10) : "?"})`
+        : `pool${p.windowEnd ? `, until ${new Date(p.windowEnd).toISOString().slice(0, 10)}` : ""}`;
+    const src = p.source === "calibration"
+      ? `calibrated from ${p.reads.length} read${p.reads.length === 1 ? "" : "s"}${p.stability != null ? ` · spread ±${fmtTok(p.stability / 2)}` : ""}`
+      : p.source === "declared" ? "declared in the roster" : "no allowance known — display only, not steering";
+    const op = p.offpeak ? `off-peak ${p.offpeak.from}–${p.offpeak.to} counts ×${p.offpeak.weight}${p.offpeak.tz ? ` (${p.offpeak.tz})` : ""}` : "no off-peak schedule";
+    const lastRead = p.lastRead ? `console said ${p.lastRead.pct}% on ${p.lastRead.date} · ledger implies ${p.impliedPct != null ? Math.round(p.impliedPct) + "%" : "?"} now` : "no console readings yet";
+    return `<div class="qcard">
+      <div class="row"><b class="mono-list">${esc(p.providerId)}</b><span class="badge">${esc(p.kind)}</span><span class="hint">${esc(win)}${p.incomplete ? " · ledger starts after the window — spend is understated" : ""}</span></div>
+      <div class="bar" style="margin:8px 0 4px;height:18px"><i style="width:${hr != null ? (hr * 100).toFixed(1) : 0}%"></i><span>${hr != null ? `headroom ${Math.round(hr * 100)}%` : "no estimate"}</span></div>
+      <div class="hint">weighted spend ${fmtTok(p.spend)} / allowance ${p.allowance != null ? fmtTok(p.allowance) : "?"} router-tokens · ${esc(src)}</div>
+      <div class="hint">${esc(op)} · ${esc(lastRead)}</div>
+      ${p.sourceNote ? `<div class="hint dim">${esc(p.sourceNote)}</div>` : ""}
+      <div class="row" style="margin-top:8px">
+        <input type="number" min="0" max="100" step="1" placeholder="console says %" data-qread="${esc(p.providerId)}" style="width:110px">
+        <button class="btn" data-qsave="${esc(p.providerId)}">Record reading</button>
+      </div>
+      <div class="hint" style="margin-top:6px">reads: ${p.reads.length ? p.reads.map((r) => `${r.date.slice(5)} ${r.pct}%`).join(" · ") : "none"}</div>
+    </div>`;
+  }).join("") || `<div class="sub">No provider declares quota yet. Add <span class="mono-list">providers.&lt;id&gt;.quota</span> to the roster — <span class="mono-list">{ kind: "pool"|"calendar"|"rolling", allowance?, calibration: { reads: [{ date, pct }] }, offpeak?: { from, to, weight, tz }, source }</span> — then Save &amp; apply. Reads entered here are stamped with the ledger position automatically.</div>`;
+  $("#quotaNeutral").textContent = (q.neutral ?? []).length
+    ? `Neutral — no declaration, never steered on quota: ${(q.neutral ?? []).join(", ")}`
+    : "every routed provider has a quota declaration";
+}
+document.addEventListener("click", (e) => {
+  const save = e.target.closest?.("[data-qsave]");
+  if (!save) return;
+  const pid = save.dataset.qsave;
+  const input = $(`input[data-qread="${CSS.escape(pid)}"]`);
+  const pct = Number(input?.value);
+  if (!Number.isFinite(pct) || pct < 0 || pct > 100) { toast("Enter the console's percentage, 0–100.", true); return; }
+  save.disabled = true;
+  (async () => {
+    const r = await api("/api/roster");
+    r.roster.providers?.[pid]?.quota?.calibration?.reads?.push({ date: new Date().toISOString().slice(0, 10), pct });
+    const res = await api("/api/roster", { method: "PUT", body: JSON.stringify(r.roster) });
+    if (res.ok) { toast(`${pid}: reading recorded (${pct}%) — allowance recalibrated.`, false); state = await api("/api/state"); renderQuota(); }
+    else toast("Save failed — roster rolled back.", true);
+  })().catch((err) => { if (err.message !== "unauthorized") toast(err.message, true); })
+    .finally(() => { save.disabled = false; });
+});
+
+/* ── edits ──────────────────────────────────────────────────── */
+document.addEventListener("input", (e) => {
+  const el = e.target;
+  if (el.dataset?.tier) {
+    const t = roster.tiers[el.dataset.tier];
+    if (el.dataset.field === "target") t.target = el.value.trim();
+    else t.fallbacks = parseChain(el.value);
+    markChain(el);
+  } else if (el.id === "omniModel" || el.id === "wideModel") {
+    roster[el.id] = parseChain(el.value); markChain(el);
+  } else if (el.id === "mixProposers") { roster.mixture.proposers = parseChain(el.value); markChain(el); }
+  else if (el.id === "mixAggregator") { roster.mixture.aggregator = parseChain(el.value); markChain(el); }
+  else if (el.id === "mixTimeout") { roster.mixture.proposerTimeoutMs = Number(el.value) || undefined; }
+  else if (el.id === "wideChars") { roster.routing.wideChars = Number(el.value) || undefined; }
+  else if (el.id === "minConfidence") { roster.routing.minConfidence = Number(el.value); }
+  else if (el.id === "wfMinConfidence") { roster.routing.workflowMinConfidence = Number(el.value); }
+  else if (el.id === "defaultWorkload") { roster.routing.defaultWorkload = el.value; }
+  else if (el.dataset?.wfShape) {
+    const e = wfEntry(el.dataset.wfShape);
+    if (el.value.trim()) e.shape = el.value.trim(); else delete e.shape;
+    pruneEntry(el.dataset.wfShape);
+  } else if (el.dataset?.wfDefaults) {
+    const name = el.dataset.wfDefaults;
+    const v = el.value.trim();
+    const e = wfEntry(name);
+    if (!v) { delete e.defaults; el.classList.remove("bad"); el.title = ""; pruneEntry(name); }
+    else {
+      try {
+        const o = JSON.parse(v);
+        if (!o || typeof o !== "object" || Array.isArray(o)) throw new Error("must be an object");
+        e.defaults = o; el.classList.remove("bad"); el.title = "";
+      } catch { el.classList.add("bad"); el.title = "defaults must be a JSON object"; }
+    }
+  }
+});
+function markChain(el) {
+  const p = el.id === "omniModel" || el.id === "wideModel" || el.id.startsWith("mix")
+    ? chainProblem(el.value)
+    : (el.dataset.field === "target" ? targetProblem(el.value.trim()) : chainProblem(el.value));
+  el.classList.toggle("bad", Boolean(p));
+  el.title = p ?? "";
+}
+document.addEventListener("change", (e) => {
+  const el = e.target;
+  if (el.dataset?.profile) {
+    const old = el.dataset.profile;
+    if (el.dataset.field === "name") {
+      const nv = el.value.trim() || old;
+      if (nv !== old && !roster.profiles[nv]) { roster.profiles[nv] = roster.profiles[old]; delete roster.profiles[old]; renderProfiles(); }
+    } else if (el.dataset.field === "thinking") {
+      const p = roster.profiles[old] ?? (roster.profiles[old] = {});
+      if (el.value === "auto") delete p.thinking; else p.thinking = el.value;
+    } else {
+      const v = el.value;
+      const thinking = roster.profiles[old]?.thinking;
+      roster.profiles[old] = v.startsWith("workload:") ? { workload: v.slice(9) } : v.startsWith("use:") ? { use: v.slice(4) } : {};
+      if (thinking !== undefined) roster.profiles[old].thinking = thinking;
+    }
+  } else if (el.dataset?.prov) {
+    const id = el.dataset.prov;
+    roster.providers[id].enabled = el.checked;
+    toast(`${id} ${el.checked ? "enabled" : "disabled"} — Save & apply on the Delegation tab to land it`, false);
+  } else if (el.id === "allowPayg") {
+    if (el.checked && !confirm("Allow routing to pay-per-token providers?\n\nThis is exactly the spend this kit exists to avoid: any tier or chain that lands on a payg provider will bill per token with no cap.")) {
+      el.checked = false; return;
+    }
+    roster.allowPayg = el.checked;
+  } else if (el.dataset?.wfArg) {
+    wfEntry(el.dataset.wfArg).taskArg = el.value;
+  } else if (el.dataset?.wfAssignable) {
+    const name = el.dataset.wfAssignable;
+    const wf = (state?.resolved?.workflowLibrary ?? []).find((w) => w.name === name);
+    if (el.checked) {
+      const e = wfEntry(name);
+      delete e.enabled;
+      if (!e.taskArg) {
+        const pick = wf?.autoArg ?? wf?.args?.[0]?.name ?? null;
+        if (!pick) { el.checked = false; toast(`${name} declares no task argument, so the judge cannot fill it — author an arg into the workflow first.`, true); pruneEntry(name); return; }
+        e.taskArg = pick;
+      }
+      if (!e.shape && !wf?.shape) { el.checked = false; toast(`${name} has no shape text for the judge to match against.`, true); pruneEntry(name); return; }
+      renderWorkflows();
+    } else {
+      wfEntry(name).enabled = false;
+    }
+  }
+});
+document.addEventListener("click", (e) => {
+  const del = e.target.closest?.("[data-del-profile]");
+  if (del) { delete roster.profiles[del.dataset.delProfile]; renderProfiles(); }
+  const reset = e.target.closest?.("[data-wf-reset]");
+  if (reset) {
+    delete roster.workflows?.registry?.[reset.dataset.wfReset];
+    pruneEntry(reset.dataset.wfReset);
+    renderWorkflows();
+    toast(`${reset.dataset.wfReset}: override dropped — falls back to library derivation.`, false);
+  }
+});
+
+/* ── save ───────────────────────────────────────────────────── */
+function collectProblems() {
+  const problems = [];
+  for (const [name, t] of Object.entries(roster.tiers ?? {})) {
+    const p1 = targetProblem(t.target); if (p1) problems.push(`tiers.${name}.target: ${p1}`);
+    for (const f of t.fallbacks ?? []) { const p = targetProblem(f); if (p) problems.push(`tiers.${name}.fallbacks: ${f} — ${p}`); }
+  }
+  for (const k of ["omniModel", "wideModel"]) { const p = chainProblem(roster[k]); if (p) problems.push(`${k}: ${p}`); }
+  const p1 = chainProblem(roster.mixture?.proposers); if (p1) problems.push(`mixture.proposers: ${p1}`);
+  const p2 = chainProblem(roster.mixture?.aggregator); if (p2) problems.push(`mixture.aggregator: ${p2}`);
+  if (roster.routing?.defaultWorkload && !(roster.routing.defaultWorkload in (roster.tiers ?? {}))) problems.push("default workload is not a tier");
+  for (const [name, p] of Object.entries(roster.profiles ?? {})) {
+    if (p.workload && !(p.workload in (roster.tiers ?? {}))) problems.push(`profiles.${name}: unknown tier`);
+  }
+  for (const [name, p] of Object.entries(roster.profiles ?? {})) {
+    if (p.thinking !== undefined && !["off", "auto", "deep"].includes(p.thinking)) problems.push(`profiles.${name}.thinking: must be off / auto / deep`);
+  }
+  const libByName = new Map((state?.resolved?.workflowLibrary ?? []).map((w) => [w.name, w]));
+  for (const [name, o] of Object.entries(roster.workflows?.registry ?? {})) {
+    if (o.enabled === false) continue;
+    const wf = libByName.get(name);
+    if (!o.taskArg) problems.push(`workflows.registry.${name}: taskArg required to be assignable`);
+    else if (wf?.args?.length && !wf.args.some((a) => a.name === o.taskArg)) problems.push(`workflows.registry.${name}: taskArg "${o.taskArg}" is not an arg the workflow declares`);
+    if (!o.shape && !wf?.shape) problems.push(`workflows.registry.${name}: no shape text for the judge`);
+    if (o.defaults !== undefined && (typeof o.defaults !== "object" || o.defaults === null || Array.isArray(o.defaults))) problems.push(`workflows.registry.${name}: defaults must be a JSON object`);
+  }
+  return problems;
+}
+async function saveRosterNow() {
+  const problems = collectProblems();
+  const out = $("#applyOut");
+  if (problems.length) {
+    out.classList.remove("hidden", "good"); out.classList.add("bad");
+    out.textContent = "Not applied — fix these first:\n" + problems.map((p) => `  ✗ ${p}`).join("\n");
+    return;
+  }
+  const btn = $("#saveRoster");
+  btn.disabled = true; $("#saveState").textContent = "applying…";
+  try {
+    const res = await api("/api/roster", { method: "PUT", body: JSON.stringify(roster) });
+    out.classList.remove("hidden");
+    out.classList.toggle("good", res.ok);
+    out.classList.toggle("bad", !res.ok);
+    out.textContent = res.output || (res.ok ? "applied" : "apply failed");
+    if (res.restartRecommended) toast("Runtime files were updated — the router picks the new config up live, but restart the service to pick up code changes.", false);
+    else toast(res.ok ? "Roster applied." : "Apply failed — roster rolled back.", !res.ok);
+    $("#saveState").textContent = res.ok ? "applied" : "rolled back";
+    state = await api("/api/state"); renderGuard(); render();
+  } catch (e) {
+    if (e.message !== "unauthorized") { $("#saveState").textContent = "failed"; toast(e.message, true); }
+  } finally { btn.disabled = false; }
+  return true;
+}
+$("#saveRoster").onclick = () => saveRosterNow();
+
+/* ── suggestions ────────────────────────────────────────────── */
+let suggestion = null;
+$("#suggestBtn").onclick = async () => {
+  const btn = $("#suggestBtn");
+  btn.disabled = true;
+  try {
+    suggestion = await api("/api/suggest");
+    renderSuggestion();
+    $("#suggestPanel").classList.remove("hidden");
+    $("#suggestPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (e) {
+    if (e.message !== "unauthorized") toast(e.message, true);
+  } finally { btn.disabled = false; }
+};
+$("#suggestDismiss").onclick = () => {
+  suggestion = null;
+  $("#suggestPanel").classList.add("hidden");
+};
+$("#suggestApply").onclick = () => {
+  if (!suggestion?.ok) return;
+  const sug = suggestion.suggested ?? {};
+  for (const [name, t] of Object.entries(sug.tiers ?? {})) {
+    if (!roster.tiers?.[name]) continue;
+    roster.tiers[name].target = String(t.target ?? "");
+    roster.tiers[name].fallbacks = [...(t.fallbacks ?? [])];
+  }
+  if (Array.isArray(sug.omniModel) && sug.omniModel.length) roster.omniModel = [...sug.omniModel];
+  if (Array.isArray(sug.wideModel) && sug.wideModel.length) roster.wideModel = [...sug.wideModel];
+  if (sug.mixture?.proposers?.length) {
+    roster.mixture ??= {};
+    roster.mixture.proposers = [...sug.mixture.proposers];
+    if (sug.mixture.aggregator) roster.mixture.aggregator = sug.mixture.aggregator;
+  }
+  renderDelegation();
+  toast("Suggestion loaded into the editor — review it, then Save & apply.", false);
+};
+
+function renderSuggestion() {
+  if (!suggestion?.ok) return;
+  const b = suggestion.basis ?? {};
+  $("#suggestBasis").textContent =
+    `Ranked ${b.modelsScored ?? "?"} model(s) against ${b.recentRequests ?? 0} recent routed request(s). ` +
+    "Deterministic scorer over measured latency and errors, declared context/strength, and calibrated headroom — a starting point, not a benchmark. Declare strengths in the roster to sharpen it.";
+  const chip = (c) => `<span class="badge ${c === "high" ? "plan" : c === "low" ? "payg" : ""}">${c}</span>`;
+  const cur = suggestion.current ?? {};
+  const sug = suggestion.suggested ?? {};
+  const rows = [];
+  for (const [name, t] of Object.entries(sug.tiers ?? {})) {
+    const curT = cur.tiers?.[name] ?? {};
+    const curTxt = [curT.target, ...(curT.fallbacks ?? [])].join(" → ") || "—";
+    const sugTxt = [t.target, ...(t.fallbacks ?? [])].join(" → ");
+    rows.push({ slot: `tier · ${name}`, cur: curTxt, sug: sugTxt, why: suggestion.rationale?.[`tiers.${name}`] ?? "", conf: suggestion.confidence?.[`tiers.${name}`] ?? "low", changed: curTxt !== sugTxt });
+  }
+  if (Array.isArray(sug.omniModel)) rows.push({ slot: "capability · omni", cur: (cur.omniModel ?? []).join(" → ") || "—", sug: sug.omniModel.join(" → "), why: suggestion.rationale?.omniModel ?? "", conf: suggestion.confidence?.omniModel ?? "low", changed: JSON.stringify(cur.omniModel ?? []) !== JSON.stringify(sug.omniModel) });
+  if (Array.isArray(sug.wideModel)) rows.push({ slot: "capability · wide", cur: (cur.wideModel ?? []).join(" → ") || "—", sug: sug.wideModel.join(" → "), why: suggestion.rationale?.wideModel ?? "", conf: suggestion.confidence?.wideModel ?? "low", changed: JSON.stringify(cur.wideModel ?? []) !== JSON.stringify(sug.wideModel) });
+  if (sug.mixture?.proposers?.length) rows.push({ slot: "mixture", cur: [...(cur.mixture?.proposers ?? []), cur.mixture?.aggregator].filter(Boolean).join(" → ") || "—", sug: [...sug.mixture.proposers, sug.mixture.aggregator].filter(Boolean).join(" → "), why: suggestion.rationale?.mixture ?? "", conf: suggestion.confidence?.mixture ?? "low", changed: true });
+  $("#suggestTable tbody").innerHTML = rows.map((r) => `
+    <tr style="${r.changed ? "" : "opacity:.55"}">
+      <td class="mono-list">${esc(r.slot)}${r.changed ? "" : ' <span class="hint">(unchanged)</span>'}</td>
+      <td class="mono-list dim">${esc(r.cur)}</td>
+      <td class="mono-list" style="color:var(--ok)">${esc(r.sug)}</td>
+      <td class="dim">${esc(r.why)}</td>
+      <td>${chip(r.conf)}</td>
+    </tr>`).join("");
+  $("#suggestNotes").textContent = (suggestion.notes ?? []).join(" · ");
+}
+$("#revertRoster").onclick = async () => {
+  try { const r = await api("/api/roster"); roster = JSON.parse(JSON.stringify(r.roster)); renderDelegation(); toast("Reverted to the roster on disk.", false); }
+  catch (e) { if (e.message !== "unauthorized") toast(e.message, true); }
+};
+
+/* ── misc ───────────────────────────────────────────────────── */
+function toast(msg, bad) {
+  $$(".toast").forEach((t) => t.remove());
+  const t = document.createElement("div");
+  t.className = "toast" + (bad ? " bad" : "");
+  t.textContent = msg;
+  document.body.append(t);
+  setTimeout(() => t.remove(), 6000);
+}
+function render() {
+  renderUsage();
+  renderDelegation();
+  renderProviders();
+  renderQuota();
+  renderWorkflows();
+}
+
+if (token) loadAll(); else showGate();
+setTimer();
+</script>
+</body>
+</html>

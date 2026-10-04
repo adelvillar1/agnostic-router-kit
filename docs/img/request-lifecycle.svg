@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="780" viewBox="0 0 1080 780" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#58a6ff"/>
+    </marker>
+    <marker id="ah2g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#3fb950"/>
+    </marker>
+    <marker id="ah2r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#f85149"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1080" height="780" rx="12" fill="#0d1117"/>
+  <text x="28" y="36" font-size="16" font-weight="600" fill="#e6edf3">Request lifecycle — one call through the router</text>
+  <text x="28" y="56" font-size="11" fill="#8b949e">capability first · one judgment per task · quota-aware chain walk · every attempt metered</text>
+
+  <!-- entry -->
+  <rect x="290" y="72" width="500" height="52" rx="8" fill="#161b22" stroke="#2a313c"/>
+  <text x="540" y="93" font-size="12" fill="#e6edf3" text-anchor="middle" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace">any client → POST /v1/chat/completions</text>
+  <text x="540" y="112" font-size="10.5" fill="#8b949e" text-anchor="middle">model: auto · quick · code · hard · prose · long-context · vision · mixture · deep · bulk</text>
+
+  <line x1="540" y1="124" x2="540" y2="150" stroke="#58a6ff" stroke-width="1.2" marker-end="url(#ah2)"/>
+
+  <!-- capability -->
+  <rect x="290" y="152" width="500" height="48" rx="8" fill="#161b22" stroke="#2a313c"/>
+  <text x="540" y="172" font-size="11.5" fill="#e6edf3" text-anchor="middle">capability rules — images → omniModel chain · chars &gt; wideChars → wideModel chain</text>
+  <text x="540" y="190" font-size="10" fill="#6e7681" text-anchor="middle">checked before any judgment · always win</text>
+
+  <line x1="540" y1="200" x2="540" y2="224" stroke="#58a6ff" stroke-width="1.2" marker-end="url(#ah2)"/>
+
+  <!-- cache -->
+  <rect x="290" y="226" width="500" height="48" rx="8" fill="#161b22" stroke="#2a313c"/>
+  <text x="540" y="246" font-size="11.5" fill="#e6edf3" text-anchor="middle">session cache — hash(system head + last instruction) · TTL 6h</text>
+  <text x="540" y="264" font-size="10" fill="#6e7681" text-anchor="middle">hit: reuse the verdict — no judge call</text>
+
+  <line x1="540" y1="274" x2="540" y2="298" stroke="#58a6ff" stroke-width="1.2" marker-end="url(#ah2)"/>
+
+  <!-- judge -->
+  <rect x="290" y="300" width="500" height="64" rx="8" fill="#10192b" stroke="#4f8cc9"/>
+  <text x="540" y="322" font-size="11.5" fill="#e6edf3" text-anchor="middle">TypeSafe judge — one call · four gated answers</text>
+  <text x="540" y="340" font-size="10.5" fill="#8b949e" text-anchor="middle">workload · execution · workflow · followUp</text>
+  <text x="540" y="357" font-size="10" fill="#d29922" text-anchor="middle">fail-open: no key / error / low confidence → defaultWorkload, single</text>
+
+  <!-- branch arrows -->
+  <line x1="440" y1="364" x2="230" y2="398" stroke="#58a6ff" stroke-width="1.2" marker-end="url(#ah2)"/>
+  <line x1="540" y1="364" x2="540" y2="398" stroke="#58a6ff" stroke-width="1.2" marker-end="url(#ah2)"/>
+  <line x1="640" y1="364" x2="850" y2="398" stroke="#58a6ff" stroke-width="1.2" marker-end="url(#ah2)"/>
+
+  <!-- swarm -->
+  <rect x="60" y="400" width="320" height="104" rx="8" fill="#161b22" stroke="#2a313c"/>
+  <text x="76" y="422" font-size="11.5" fill="#e6edf3">execution: swarm</text>
+  <text x="76" y="442" font-size="10.5" fill="#8b949e">/route → assignments:</text>
+  <text x="76" y="458" font-size="10.5" fill="#8b949e">workflow first · followUp second</text>
+  <text x="76" y="474" font-size="10.5" fill="#8b949e">a client runs the saved workflows</text>
+  <text x="76" y="492" font-size="10" fill="#6e7681">verdict logged as route-verdict</text>
+
+  <!-- single -->
+  <rect x="390" y="400" width="320" height="150" rx="8" fill="#161b22" stroke="#2a313c"/>
+  <text x="406" y="422" font-size="11.5" fill="#e6edf3">execution: single</text>
+  <text x="406" y="442" font-size="10.5" fill="#8b949e">tier chain walk — roster order</text>
+  <text x="406" y="458" font-size="10.5" fill="#8b949e">quota steering: skip headroom &lt; 40%</text>
+  <text x="406" y="474" font-size="10.5" fill="#8b949e">skip benched (cooling) providers</text>
+  <text x="406" y="490" font-size="10.5" fill="#8b949e">thinking policy: auto / off / deep</text>
+  <text x="406" y="514" font-size="10.5" fill="#3fb950">2xx → stream (SSE tap) or forward</text>
+  <text x="406" y="534" font-size="10.5" fill="#f85149">402/429/5xx → bench + walk chain</text>
+
+  <!-- mixture -->
+  <rect x="720" y="400" width="320" height="150" rx="8" fill="#161b22" stroke="#2a313c"/>
+  <text x="736" y="422" font-size="11.5" fill="#e6edf3">execution: mixture</text>
+  <text x="736" y="442" font-size="10.5" fill="#8b949e">proposers in parallel — distinct providers</text>
+  <text x="736" y="458" font-size="10.5" fill="#8b949e">judge: best answer + worth merging?</text>
+  <text x="736" y="474" font-size="10.5" fill="#8b949e">aggregator only if merging wins</text>
+  <text x="736" y="492" font-size="10" fill="#6e7681">tool turns skip mixture → single</text>
+  <text x="736" y="510" font-size="10" fill="#6e7681">every proposer metered separately</text>
+
+  <!-- converge to upstream strip -->
+  <line x1="550" y1="550" x2="530" y2="586" stroke="#58a6ff" stroke-width="1.2" marker-end="url(#ah2)"/>
+  <line x1="860" y1="550" x2="650" y2="586" stroke="#58a6ff" stroke-width="1.2" marker-end="url(#ah2)"/>
+
+  <!-- upstream strip -->
+  <rect x="240" y="588" width="620" height="64" rx="8" fill="#10192b" stroke="#4f8cc9"/>
+  <text x="540" y="610" font-size="11.5" fill="#e6edf3" text-anchor="middle">upstream attempt — per candidate, thinking policy applied to the forwarded call</text>
+  <text x="540" y="630" font-size="10.5" fill="#3fb950" text-anchor="middle">2xx → SSE usage tap → ledger (tokens per model)</text>
+  <text x="540" y="646" font-size="10.5" fill="#f85149" text-anchor="middle">402/429/5xx → bench + walk the chain · 400/404 → pass through as-is</text>
+
+  <!-- ledger -->
+  <line x1="540" y1="652" x2="540" y2="678" stroke="#3fb950" stroke-width="1.2" marker-end="url(#ah2g)"/>
+  <rect x="240" y="680" width="620" height="56" rx="8" fill="#161b22" stroke="#2a313c"/>
+  <text x="540" y="702" font-size="11.5" fill="#e6edf3" text-anchor="middle">usage ledger — hourly buckets (off-peak weighted) · cumulative weighted spend · recent ring</text>
+  <text x="540" y="722" font-size="10.5" fill="#8b949e" text-anchor="middle">feeds the dashboard, quota headroom, and steering</text>
+
+  <!-- headers note -->
+  <rect x="880" y="680" width="176" height="56" rx="8" fill="#161b22" stroke="#2a313c"/>
+  <text x="894" y="700" font-size="10.5" fill="#e6edf3">response headers:</text>
+  <text x="894" y="716" font-size="10" fill="#8b949e">x-router-execution</text>
+  <text x="894" y="730" font-size="10" fill="#8b949e">x-router-workload · thinking</text>
+
+  <!-- swarm exit -->
+  <path d="M 220 504 C 200 560, 220 620, 238 668" fill="none" stroke="#3fb950" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ah2g)"/>
+  <text x="84" y="640" font-size="9.5" fill="#6e7681">verdicts also land</text>
+  <text x="84" y="654" font-size="9.5" fill="#6e7681">in the ledger</text>
+</svg>

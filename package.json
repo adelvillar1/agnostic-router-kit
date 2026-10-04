@@ -1,0 +1,17 @@
+{
+  "name": "agnostic-router-kit",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Harness-agnostic local model routing: an OpenAI-compatible proxy that routes each task to the right upstream plan by workload",
+  "type": "module",
+  "bin": {
+    "agnostic-router-kit": "bin/agnostic-router-kit.mjs",
+    "kit": "bin/agnostic-router-kit.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "kit": "node bin/agnostic-router-kit.mjs"
+  }
+}
