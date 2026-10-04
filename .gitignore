@@ -7,6 +7,7 @@ router/node_modules/
 router/logs/
 *.bak-kit*
 .DS_Store
+router/package-lock.json
 
 # NOTE: roster.json IS committed (it holds apiKeyEnv references, never raw
 # keys). If you ever put a raw "apiKey" in the roster, `kit apply` warns and
