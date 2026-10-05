@@ -140,6 +140,19 @@ The push rule: a fact known at dispatch belongs in the brief. The store is for
 what comes after — the verdict that arrives mid-run, the status that changes,
 the phase the run moved into.
 
+### Editing, not rewriting
+
+`write_file` replaces a whole file, so a part that touches one line of a
+400-line file regenerates the other 399 from the model's memory — it truncates,
+it drifts, and nothing in the workspace says which of the two happened.
+`edit_file({path, old_string, new_string})` is the surgical alternative: the
+`old_string` must be present exactly once, and a zero match or a second match
+fails with the count named rather than rewriting the wrong lines. The
+replacement is interpolated literally, so `$&`-shaped text lands as written.
+A refused edit journals its own line — a fired line followed by silence would
+read as an edit that landed when the file never changed. It rides the same
+`workspace-io` grant as every other file tool.
+
 ### What agents cannot do
 
 - **Reach outside the workspace.** Every file tool resolves against the run's
