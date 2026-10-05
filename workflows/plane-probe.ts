@@ -40,6 +40,31 @@ const result = await builder.ask<ProbeAnswer>(
   `${harness}\n\nQuestion: ${String(args.task)}\n\nReturn the field answer.`
 );
 
+// The judging path: dev-decisions first, raw sys1 as the recorded fallback.
+// One genuinely atomic part and one deliberately multi-concern part — the gate
+// must accept the first and flag the second, whichever source judges.
+const gateProbe = async (title: string, instruction: string, acceptance: string[]) => {
+  const g = await judgeContract(
+    { title, instruction, acceptance },
+    String(args.task),
+    sys1.judge
+  );
+  const v = gateVerdict(g);
+  log(`gate probe "${title}" → ${v}`);
+  return { title, verdict: v, needsFixup: gateNeedsFixup(g), source: g.source ?? null, ok: g.ok };
+};
+
+const atomicProbe = await gateProbe(
+  "probe atom",
+  "Create out/plane-probe/1/probe.js exporting answer() returning a string.",
+  ["the file exists and exports answer"]
+);
+const blobProbe = await gateProbe(
+  "probe blob (multi-concern by construction)",
+  "Create probe.js AND copy it to backup.js AND edit probe.js again AND delete scratch.js.",
+  ["all four files exist as described"]
+);
+
 return {
   conclusion: `plane probe: ${result.answer}`,
   findings: [],
@@ -47,6 +72,8 @@ return {
     "environment measured through the plane's allowlisted probes",
     "harness block rendered by the plane",
     "the builder's contract was journaled at dispatch",
+    `judge path (${atomicProbe.source}): atomic part → ${atomicProbe.verdict}`,
+    `judge path (${blobProbe.source}): multi-concern part → ${blobProbe.verdict}`,
   ],
   notCovered: ["the contract's effect on builder behavior — that is adversarial-solve's evidence"],
 };

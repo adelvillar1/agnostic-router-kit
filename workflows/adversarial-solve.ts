@@ -117,112 +117,13 @@ interface Finding {
   severity: "low" | "medium" | "high";
 }
 
-interface Sys1Gate {
-  ok: boolean;
-  atomic: boolean | null;
-  consistent: boolean | null;
-  confidence: number | null;
-  provider: string | null;
-  reason?: string;
-}
-
 const task = String(args.task ?? "").trim() || "Solve the problem.";
 
-// ── deterministic dispatch validation (code, never the model) ───────────────
-// The failure classes these catch, from run 2026-10-05_12-08-04: two parts
-// claiming one path (clobbered mid-session), and parts whose instructions
-// lean on another part's output ("already built (do not modify)") while the
-// dispatch is parallel.
-const normPath = (p: string): string => String(p ?? "").trim().replace(/^\/+|\/+$/g, "").replace(/^out\/adversarial\//, "").toLowerCase();
-const PATH_RE = /[\w./-]+\.(?:js|mjs|cjs|ts|json|md|py)/g;
-const DEPENDENCY_PHRASE = /already built|already implemented|do not modify|without modifying|should already exist|has been built/i;
-
-const validateParts = (parts: Part[]): string[] => {
-  const problems: string[] = [];
-  const owners = new Map<string, string>();
-  for (const p of parts) {
-    for (const raw of p.files ?? []) {
-      const f = normPath(raw);
-      const prev = owners.get(f);
-      if (prev && prev !== p.title) problems.push(`file collision: ${f} is claimed by both "${prev}" and "${p.title}"`);
-      else owners.set(f, p.title);
-    }
-  }
-  for (const p of parts) {
-    const owned = new Set((p.files ?? []).map(normPath));
-    if (!owned.size) problems.push(`"${p.title}" declares no files — a part must own its every path`);
-    for (const m of String(p.instruction).match(PATH_RE) ?? []) {
-      const f = normPath(m);
-      if (f.includes("/") && !owned.has(f)) {
-        problems.push(`"${p.title}" names ${m} in its instruction but does not own it`);
-      }
-    }
-    if (DEPENDENCY_PHRASE.test(String(p.instruction))) {
-      problems.push(`"${p.title}" depends on another part's output ("already built"/"do not modify") — every part is standalone; integration is the champion's job`);
-    }
-  }
-  return problems;
-};
-
-// ── the sys1 gate (one call, two heads) ─────────────────────────────────────
-// atomicity: one concern, one standalone completion. acceptance-consistency:
-// the part's criteria contradict neither each other, the task, nor its own
-// instruction (the arithmetic-contradiction class from the same run).
-// Fail-open: an unreachable gateway dispatches as-is with the reason logged.
-const PREFERRED_PROVIDERS = ["decide", "glide", "drex", "jev", "local"];
-const GATE_SPLIT_CONFIDENCE = 0.6;
-const GATE_CONTRADICTION_P = 0.6;
-
-const sys1Gate = async (p: Part, taskText: string): Promise<Sys1Gate> => {
-  const r = await sys1.classify(
-    {
-      id: "part_atomicity",
-      description: "Classify a workflow part: is it atomic, and is its acceptance criteria set self-consistent?",
-      heads: [
-        {
-          id: "atomicity",
-          kind: "choice",
-          task: "Does this part describe exactly one concern, completable as one standalone completion (ideally one file)?",
-          labels: ["atomic", "multi-concern"],
-        },
-        {
-          id: "criteria_contradicted",
-          kind: "noul",
-          task: "Do this part's acceptance criteria contradict each other, the problem's stated constraints, or the part's own instruction?",
-        },
-      ],
-    },
-    `Problem: ${taskText}\n\nPart title: ${p.title}\nPart instruction: ${p.instruction}\nAcceptance criteria: ${(p.acceptance ?? []).join(" | ") || "(none stated)"}`
-  );
-  if (!r.ok) return { ok: false, atomic: null, consistent: null, confidence: null, provider: null, reason: r.reason };
-  for (const pid of PREFERRED_PROVIDERS) {
-    const a = r.answers?.[pid] ?? {};
-    const atomicity = a.atomicity;
-    const crit = a.criteria_contradicted;
-    if (atomicity && typeof atomicity.label === "string") {
-      return {
-        ok: true,
-        atomic: atomicity.label === "atomic",
-        consistent: crit ? !(Number(crit.noul) > GATE_CONTRADICTION_P) : null,
-        confidence: typeof atomicity.confidence === "number" ? atomicity.confidence : null,
-        provider: pid,
-      };
-    }
-  }
-  return { ok: false, atomic: null, consistent: null, confidence: null, provider: null, reason: "no-answer" };
-};
-
-const gateVerdict = (g: Sys1Gate): string => {
-  if (!g.ok) return `unavailable (${g.reason}) — dispatching as-is`;
-  const parts: string[] = [];
-  if (g.atomic === false) parts.push("multi-concern");
-  if (g.consistent === false) parts.push("acceptance criteria contradicted");
-  if (!parts.length) return `pass${g.confidence != null ? ` (conf ${g.confidence.toFixed(2)}, ${g.provider})` : ""}`;
-  return `REJECT: ${parts.join(" + ")}`;
-};
-
-const gateNeedsFixup = (g: Sys1Gate): boolean =>
-  g.ok && (g.atomic === false || g.consistent === false || (g.confidence != null && g.confidence < GATE_SPLIT_CONFIDENCE && g.atomic !== true));
+// ── the dispatch gate: the plane's, not this workflow's ─────────────────────
+// validateContract (deterministic: file collisions, self-containment,
+// dependency phrases) and judgeContract (sys1, two heads) live in
+// lib/workflow/harness.mjs and are shared with the swarm — the same gate, one
+// implementation. What follows is this workflow's orchestration of it.
 
 const readDeliverable = (): string => {
   try {
@@ -336,9 +237,9 @@ const solutions = await Promise.all(
       const notes: string[] = [];
       let current = parts;
       for (let round = 0; round < 2; round++) {
-        const problems: string[] = validateParts(current);
+        const problems: string[] = validateContract(current);
         for (const p of current) {
-          const g = await sys1Gate(p, task);
+          const g = await judgeContract(p, task, sys1.judge);
           const v = gateVerdict(g);
           log(`gate "${p.title.slice(0, 60)}" → ${v}`);
           if (gateNeedsFixup(g)) problems.push(`"${p.title}": ${v}`);

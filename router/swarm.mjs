@@ -27,6 +27,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { judgeContract, gateNeedsFixup, makeSys1Classifier, makeJudgingClassifier } from "../lib/workflow/harness.mjs";
 
 const decoder = new TextDecoder();
 
@@ -511,50 +512,25 @@ export function createSwarm(deps) {
     }
     log({ event: "swarm", stage: "decompose", parts: parts.length, titles: parts.map((p) => p.title), requested });
 
-    // ── atomicity gate (sys1 classify): every part is judged before a worker
-    // is dispatched — the same contract the workflows' builders run under.
-    // multi-concern → ONE re-decomposition round for that part; sub-parts are
-    // gated and dispatched regardless (depth spent). Gate unavailable →
-    // fail-open with the outcome recorded, never a hang. Verdicts log into
-    // sys1's own JSONL store (log:true) for later floor fitting.
-    const sys1Base = (process.env.SYS1_URL ?? "http://127.0.0.1:8400").replace(/\/+$/, "");
+    // ── atomicity gate: the plane's (lib/workflow/harness.mjs), shared with the
+    // workflows' dispatch gate — same head shapes, same thresholds, one
+    // transport. Judging composes dev-decisions first (rows in the shared
+    // calibration store) with raw sys1 as the recorded fallback; multi-concern
+    // → ONE re-decomposition round for that part; sub-parts are gated and
+    // dispatched regardless (depth spent). Gate unavailable → fail-open with
+    // the outcome recorded, never a hang.
+    const runFixed = (cmd, args) =>
+      new Promise((resolve) => {
+        execFile(cmd, args, { timeout: 60000, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
+          resolve({ exitCode: err ? (err.code ?? 1) : 0, stdout: String(stdout ?? "") });
+        });
+      });
+    const classify = makeJudgingClassifier(runFixed, makeSys1Classifier());
     const atomicityVerdict = async (part) => {
       if (!process.env.SYS1_BEARER_TOKEN) return { ok: false, reason: "no-sys1-token" };
-      const taskSpec = {
-        id: "part_atomicity",
-        description: "Classify whether a swarm part is atomic: one concern, one standalone completion.",
-        heads: [{
-          id: "atomicity",
-          kind: "choice",
-          task: "Does this part describe exactly one concern, completable as one standalone completion?",
-          labels: ["atomic", "multi-concern"],
-        }],
-      };
-      try {
-        const res = await fetch(`${sys1Base}/v1/classify`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.SYS1_BEARER_TOKEN}` },
-          body: JSON.stringify({
-            provider: "core",
-            text: `Part title: ${part.title}\nPart instruction: ${part.instruction}`,
-            log: true,
-            task_spec: taskSpec,
-          }),
-          signal: AbortSignal.timeout(30000),
-        });
-        if (!res.ok) return { ok: false, reason: `http-${res.status}` };
-        const d = await res.json();
-        const answers = d?.answers ?? {};
-        for (const pid of ["decide", "glide", "drex", "jev", "local"]) {
-          const a = answers[pid]?.atomicity;
-          if (a && typeof a.label === "string") {
-            return { ok: true, label: a.label, confidence: Number.isFinite(a.confidence) ? a.confidence : null, provider: pid };
-          }
-        }
-        return { ok: false, reason: "no-answer" };
-      } catch (e) {
-        return { ok: false, reason: String(e?.message ?? e).slice(0, 120) };
-      }
+      const g = await judgeContract(part, signals.lastUser, classify);
+      if (!g.ok) return { ok: false, reason: g.reason };
+      return g;
     };
     const atomicDispatch = [];
     for (const part of parts) {
@@ -564,9 +540,8 @@ export function createSwarm(deps) {
         atomicDispatch.push(part);
         continue;
       }
-      log({ event: "swarm-atomicity", label: String(part.title ?? "").slice(0, 80), verdict: v.label, conf: v.confidence, provider: v.provider, requested });
-      const bad = v.label === "multi-concern" || (v.confidence != null && v.confidence < 0.6);
-      if (!bad) {
+      log({ event: "swarm-atomicity", label: String(part.title ?? "").slice(0, 80), verdict: v.atomic ? "atomic" : "multi-concern", conf: v.confidence, provider: v.provider, source: v.source, requested });
+      if (!gateNeedsFixup(v)) {
         atomicDispatch.push(part);
         continue;
       }
@@ -574,7 +549,7 @@ export function createSwarm(deps) {
       if (sub.parts.length >= PARTS_MIN) {
         for (const sp of sub.parts) {
           const v2 = await atomicityVerdict(sp);
-          log({ event: "swarm-atomicity", label: String(sp.title ?? "").slice(0, 80), verdict: v2.ok ? v2.label : "unavailable", depth: 2, requested });
+          log({ event: "swarm-atomicity", label: String(sp.title ?? "").slice(0, 80), verdict: v2.ok ? (v2.atomic ? "atomic" : "multi-concern") : "unavailable", depth: 2, requested });
           atomicDispatch.push(sp);
         }
       } else {
