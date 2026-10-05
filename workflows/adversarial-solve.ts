@@ -279,21 +279,15 @@ log(`stack pinned: ${strategy.stack}`);
 log(`${strategy.approaches.length} champions are competing independently`);
 
 phase("Build each solution in parallel, competing independently");
-// ── the harness contract: measure what a harness would know ────────────────
+// ── the harness block: measured and rendered by the plane ───────────────────
 // Builders get no harness — no CLAUDE.md, no installed-tooling knowledge, no
 // shell history. The dispatch IS the harness: runtime facts measured in this
 // workspace (never assumed), the pinned stack, the layout, the verification
 // recipe. A builder that has to discover these burns rounds it does not have.
-const probe = async (cmd: string, args: string[]): Promise<string> => {
-  try {
-    const r = await world.run(cmd, args);
-    return `- ${cmd}: ${String(r.stdout ?? "").trim().split("\n")[0] || "(no output)"}`;
-  } catch {
-    return `- ${cmd}: (unavailable)`;
-  }
-};
-const envFacts = [await probe("node", ["--version"]), await probe("python3", ["--version"])];
-log(`harness contract measured: ${envFacts.join(" · ")}`);
+// measureEnvironment + renderBrief are the plane's (lib/workflow/harness.mjs);
+// nothing here assembles a brief by hand.
+const env = await measureEnvironment((cmd: string, args: string[]) => world.run(cmd, args));
+log(`harness contract measured: ${env.facts.join(" · ")}`);
 
 const solutions = await Promise.all(
   strategy.approaches.map(async (a) => {
@@ -302,15 +296,12 @@ const solutions = await Promise.all(
     // cross-champion file clobbers seen in run 2026-10-05_12-08-04 become
     // impossible.
     const ns = `out/adversarial/${String(a.id).replace(/[^\w-]/g, "")}/`;
-    const harness = [
-      "ENVIRONMENT (measured in this workspace at dispatch time — not assumed):",
-      ...envFacts,
-      `- pinned stack for every part of this competition: ${strategy.stack}`,
-      `- workspace layout: your part's files live under ${ns} and nowhere else`,
-      `- verification recipe: run ONLY the tests your own files define (e.g. node --test ${ns}<file>.test.js); whole-suite or other parts' tests are out of bounds`,
-      "- no network installs: the stack text's dependency policy is binding",
-      "YOUR BRIEF IS COMPLETE: everything you need is in this message. If a fact you need is missing, escalate BEFORE building.",
-    ].join("\n");
+    const harness = renderBrief({
+      stack: strategy.stack,
+      ns,
+      verification: `run ONLY the tests your own files define (e.g. node --test ${ns}<file>.test.js); whole-suite or other parts' tests are out of bounds`,
+      facts: env.facts,
+    });
     const champion = agent(`Champion for ${a.name}`, {
       system:
         "You are one champion in a solution competition. Solve the problem YOUR way, completely " +
@@ -385,17 +376,21 @@ const solutions = await Promise.all(
           "You build one atomic part of one champion's approach in a solution competition. " +
           "You see the problem, your part, and nothing else: no other parts, no other champions, no other files. " +
           "If a check is impossible to pass, or your instructions contradict each other, escalate and say so plainly rather than working around it.",
+        // The plane's contract: owned files, the isolation rule, acceptance
+        // criteria, and the interface this part must expose. The engine renders
+        // it into every ask and journals it once, so the dispatch is auditable
+        // after the fact — the same contract shape the dispatch gate validates.
+        contract: {
+          files: p.files,
+          acceptance: p.acceptance,
+          provides: p.provides ? `as declared for this part: ${p.provides}` : undefined,
+        },
       });
-      const brief = (part: Part, extra = ""): string =>
+      const brief = (part: Part): string =>
         `${harness}\n\n` +
         `Problem: ${task}\n\nChampion's approach: ${a.name} — ${a.rationale}\n` +
         `Stack: ${strategy.stack}\n\n` +
         `YOUR PART (${part.title}):\n${part.instruction}\n\n` +
-        `Files you own (create or modify exactly these, all under ${ns}): ${(part.files ?? []).join(", ")}\n` +
-        `Acceptance criteria: ${(part.acceptance ?? []).join(" | ") || "(as stated in the instruction)"}\n` +
-        `You own nothing else. Other parts build in parallel elsewhere and their files are out of bounds — ` +
-        `never read, write, wait for, or test another part's files. Criteria that reference a whole-suite run ` +
-        `are wrong: run only the tests your own files define. ${extra}` +
         `Return built, location, and provides (the interface you actually exposed: paths + exported names).`;
       try {
         return await builder.ask<PartResult>(brief(p));
@@ -419,7 +414,14 @@ const solutions = await Promise.all(
                 "You build one atomic part of one champion's approach in a solution competition. " +
                 "You see the problem, your part, and nothing else: no other parts, no other champions, no other files. " +
                 "If a check is impossible to pass, or your instructions contradict each other, escalate and say so plainly rather than working around it.",
-            }).ask<PartResult>(brief(sp, "A previous builder attempt on the parent part hit the round cap; its partial work may already exist in the owned paths. "))
+              contract: {
+                files: sp.files,
+                acceptance: sp.acceptance,
+                provides: sp.provides ? `as declared for this part: ${sp.provides}` : undefined,
+                extra:
+                  "A previous builder attempt on the parent part hit the tool-round cap; its partial work may already exist in the owned paths.",
+              },
+            }).ask<PartResult>(brief(sp))
           )
         );
         return {
