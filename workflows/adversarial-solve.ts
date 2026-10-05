@@ -71,6 +71,17 @@ interface PartList {
   parts: Part[];
 }
 
+/** A part's checkpoint: the plane's record of the part's declared paths and the bytes that were in them. */
+interface Checkpoint {
+  id: string;
+  part: string;
+  entries: Array<{ path: string; existed: boolean; bytes: number; content: Buffer | null }>;
+  bytes: number;
+  requested: number;
+  oversized: boolean;
+  takenAt: number;
+}
+
 interface PartResult {
   /** What was built, concretely. */
   built: string;
@@ -334,12 +345,29 @@ const solutions = await Promise.all(
     if (notes.length) log(`"${a.name}" dispatched with recorded conflicts: ${notes.length} (the champion's integration brief carries them)`);
     const dispatch: Part[] = validated;
 
+    /**
+     * The paths a part's checkpoint covers: its declared files under this
+     * champion's namespace, spelled the way the existence probe spells them. A
+     * part's files are exclusive by construction (the dispatch gate refuses a
+     * collision), which is what makes restoring them safe while the part's
+     * siblings build into the same namespace.
+     */
+    const ownedPaths = (p: Part): string[] => (p.files ?? []).map((f) => `${ns}${f}`);
+
     // One level of recovery when a builder exhausts its tool rounds: the ask
     // was too big, not the builder broken. The SAME builder (it alone knows
     // its own progress) either splits the remaining work into atomic
     // sub-parts or reports itself stuck; sub-parts are dispatched and merged.
     // Depth is one — a sub-part that caps again fails the run loudly.
-    const buildPart = async (p: Part): Promise<PartResult> => {
+    //
+    // The whole build of the part runs under a checkpoint of the part's own
+    // paths, so a throw mid-build takes its tree with it instead of leaving
+    // debris the champion would integrate as work; the same checkpoint is
+    // restored when the part's report does not check out (see `checked`).
+    const buildPart = async (p: Part): Promise<PartResult> =>
+      buildUnderCheckpoint(world, { label: partLabel(p), paths: ownedPaths(p) }, (cp) => buildOnePart(p, cp));
+
+    const buildOnePart = async (p: Part, cp: Checkpoint): Promise<PartResult> => {
       const builder = agent(`Builder for ${a.name} · ${p.title}`, {
         system:
           "You build one atomic part of one champion's approach in a solution competition. " +
@@ -373,8 +401,10 @@ const solutions = await Promise.all(
       // that built the part is the only one that knows whether it mis-reported or
       // never wrote the file. What still fails goes upstream annotated — a champion
       // that integrates a defective part without being told is the failure this
-      // check exists to prevent, so "unverified" travels with the result.
-      const checked = async (part: Part, result: PartResult, asker: typeof builder): Promise<PartResult> => {
+      // check exists to prevent, so "unverified" travels with the result. And
+      // because a report the plane cannot trust is a tree it cannot trust either,
+      // a still-failing part's owned paths are rolled back before it travels.
+      const checked = async (part: Part, result: PartResult, asker: typeof builder, cp: Checkpoint): Promise<PartResult> => {
         let problems = resultProblems(ns, part, result);
         if (problems.length) {
           log(`"${partLabel(part)}" did not check out on the way back (${problems.length}) — one re-ask`);
@@ -386,13 +416,27 @@ const solutions = await Promise.all(
           );
           problems = resultProblems(ns, part, result);
         }
-        return problems.length
-          ? { ...result, unverified: `${problems.length} problem(s) with this part's own report: ${problems.join("; ")}` }
-          : result;
+        if (problems.length) {
+          // Acceptance failure. The plane cannot tell a file this part wrote
+          // from one it claimed, so the tree is untrustworthy with the report:
+          // the part's own paths go back to what they were before it ran, and
+          // the champion is told what was rolled back rather than handed paths
+          // that are no longer there.
+          const rb = await world.rollback(cp);
+          log(`"${partLabel(part)}" rolled back: ${rb.restored} restored, ${rb.removed} removed${rb.left.length ? `, ${rb.left.length} left` : ""}`);
+          world.remember({ kind: "status", part: partScope(ns, part), fact: `rolled back: ${rb.restored} restored, ${rb.removed} removed` });
+          return {
+            ...result,
+            built: `${result.built} [ROLLED BACK — no files survive this part]`,
+            location: `(rolled back — no files survive) ${result.location}`,
+            unverified: `${problems.length} problem(s) with this part's own report: ${problems.join("; ")}`,
+          };
+        }
+        return result;
       };
 
       try {
-        return await checked(p, await builder.ask<PartResult>(brief(p)), builder);
+        return await checked(p, await builder.ask<PartResult>(brief(p)), builder, cp);
       } catch (e) {
         if (!/did not settle after \d+ tool rounds/.test(String(e?.message ?? e))) throw e;
         log(`"${partLabel(p)}" hit the tool-round cap — decomposing the part (one level)`);
@@ -429,7 +473,14 @@ const solutions = await Promise.all(
           })
         );
         const built = await Promise.all(
-          subs.map(async ({ sp, sub }) => ({ sp, result: await checked(sp, await sub.ask<PartResult>(brief(sp)), sub) }))
+          // A sub-part is a part: its own checkpoint over its own paths, so one
+          // sub-part rolling back does not take a sibling's work with it.
+          subs.map(({ sp, sub }) =>
+            buildUnderCheckpoint(world, { label: partLabel(sp), paths: ownedPaths(sp) }, async (subCp) => ({
+              sp,
+              result: await checked(sp, await sub.ask<PartResult>(brief(sp)), sub, subCp),
+            }))
+          )
         );
         const unverified = built.filter((b) => b.result.unverified);
         return {

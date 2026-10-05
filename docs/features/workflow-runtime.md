@@ -216,6 +216,45 @@ and the exit code or signal.
 The plane gets the same three as `world.command.{start,poll,stop}`, for a
 workflow that needs one long-running command on its own account.
 
+### A part that fails takes its tree with it
+
+Parts write straight into the workspace — there is no per-part git worktree and
+no copy-on-write sandbox — so before this, a part that failed mid-build left its
+half-written files exactly where the champion was about to integrate them. The
+plane now checkpoints a part's own declared paths before it builds and restores
+them when the part fails, so a doomed part's tree is indistinguishable from the
+workspace that existed before it ran.
+
+- `buildUnderCheckpoint(world, {label, paths}, build)` runs a build under that
+  checkpoint: the snapshot is taken first, and a throw from the build rolls the
+  snapshot back and rethrows. `build` receives the checkpoint as well, because
+  the other failure path is the caller's decision: a report that does not check
+  out against the part's contract (the dispatch gate's result check) means the
+  plane cannot tell a file the part wrote from one it claimed, so the caller
+  rolls the same snapshot back itself and tells the champion what was rolled
+  back rather than handing it paths that are no longer there.
+- The snapshot covers the part's declared paths and nothing else. The parts of
+  one champion build concurrently into one namespace, so a wider snapshot would
+  restore over a sibling's work; the exclusive ownership `validateContract`
+  enforces is the same ownership a rollback restores to. A path no part declared
+  is not the rollback's to delete, so what it cannot clean is reported rather
+  than removed.
+- A rollback is exact: a captured file is written back byte for byte, a path that
+  did not exist and now does is removed, a path the snapshot could not hold (the
+  byte cap) is left alone and counted. A second rollback of the same checkpoint
+  is a no-op, because a part can be rolled back twice — its own and its parent's
+  — and the second must not invent damage.
+- An escaping path is refused at both ends: a snapshot is a write waiting to
+  happen, so a path outside the workspace never enters one.
+
+The journal carries `checkpoint` (the take: how many paths, how many bytes,
+whether the byte cap was exceeded, or the refusal) and `rollback` (the restore:
+restored, removed, uncaptured, left). The plane exposes them directly as
+`world.checkpoint` and `world.rollback`; `workflows/checkpoint-probe.ts` drives
+all three shapes — a part that throws, a part rolled back by its caller, and a
+survivor building while its neighbour fails — with no agent dispatched, and
+asserts the workspace on disk afterwards.
+
 ### What agents cannot do
 
 - **Reach outside the workspace.** Every file tool resolves against the run's
