@@ -268,301 +268,399 @@ const env = await measureEnvironment((cmd: string, args: string[]) => world.run(
 log(`harness contract measured: ${env.facts.join(" · ")}`);
 world.remember({ kind: "environment", fact: env.facts.join(" · ") });
 
-const solutions = await Promise.all(
-  strategy.approaches.map(async (a) => {
-    // Each champion owns a namespace: out/adversarial/<approach-id>/ — builders
-    // of different champions can never collide by construction, and the
-    // cross-champion file clobbers seen in run 2026-10-05_12-08-04 become
-    // impossible.
-    const ns = `out/adversarial/${String(a.id).replace(/[^\w-]/g, "")}/`;
-    const harness = renderBrief({
-      stack: strategy.stack,
-      ns,
-      verification: `run ONLY the tests your own files define (e.g. node --test ${ns}<file>.test.js); whole-suite or other parts' tests are out of bounds`,
-      facts: env.facts,
-    });
-    const champion = agent(`Champion for ${a.name}`, {
-      system:
-        "You are one champion in a solution competition. Solve the problem YOUR way, completely " +
-        "and to the best of your ability — you never see the other entries. " +
-        "If a check is impossible to pass, or your instructions contradict each other, escalate and say so plainly rather than working around it.",
-    });
-    // Atomic decomposition with a full dispatch contract: every part declares
-    // the files it exclusively owns, acceptance criteria restated from the
-    // task's constraints (no new arithmetic), and the interface it exposes.
-    // No part may depend on another part's output — integration is the
-    // champion's job alone.
-    const plan = await champion.ask<PartList>(
-      `Problem: ${task}\n\nYour assigned approach: ${a.name} — ${a.rationale}\n` +
-        `Stack (pinned for the whole competition): ${strategy.stack}\n` +
-        `Every file you name is created under ${ns} (this prefix is added for you; write relative paths).\n\n` +
-        `${harness}\n\n` +
-        "Decompose YOUR approach into 2 to 5 atomic parts. Each part must be completable as ONE " +
-        "standalone completion by a builder who sees nothing but the problem and that part's entry. " +
-        "For each part return: title; instruction (what to build); files (every workspace path the part " +
-        "creates or modifies — EXCLUSIVE, no other part may list the same path); acceptance (criteria " +
-        "restated from the problem's stated constraints or mechanically checkable — never new arithmetic " +
-        "or new scenarios); provides (the exact interface the part exposes: paths + exported names/signatures). " +
-        "No part may reference, wait for, or modify another part's work — if two things share a file or an " +
-        "interface, they are one part. If the approach cannot be split that way, escalate and say so plainly."
-    );
-
-    // Dispatch validation: deterministic checks first (code), then the sys1
-    // gate. One fix-up round for everything rejected; what still fails at
-    // depth's end dispatches with the conflict recorded — the champion's
-    // integration brief receives it explicitly.
-    const fixup = async (parts: Part[]): Promise<{ parts: Part[]; notes: string[] }> => {
-      const notes: string[] = [];
-      let current = parts;
-      for (let round = 0; round < 2; round++) {
-        const problems: string[] = validateContract(current);
-        for (const p of current) {
-          const g = await judgeContract(p, task, sys1.judge);
-          const v = gateVerdict(g);
-          log(`gate "${partLabel(p)}" → ${v}`);
-          world.remember({ kind: "verdict", part: partScope(ns, p), fact: v });
-          if (gateNeedsFixup(g)) problems.push(`"${p.title}": ${v}`);
-        }
-        if (!problems.length) return { parts: current, notes };
-        if (round === 1) {
-          notes.push(...problems);
-          return { parts: current, notes };
-        }
-        log(`dispatch rejected ${problems.length} part problem(s) — one fix-up round`);
-        const fixed = await champion.ask<PartList>(
-          `The dispatch validator rejected parts of your plan:\n${problems.map((s) => `- ${s}`).join("\n")}\n\n` +
-            `Return the CORRECTED full part list (same fields: title, instruction, files, acceptance, provides). ` +
-            `Every part standalone: its files disjoint from every other part's, its instruction naming only paths ` +
-            `it owns, its acceptance criteria consistent with the problem's constraints. Split parts that bundle ` +
-            `concerns; restate criteria that introduced new arithmetic.`
-        );
-        current = fixed.parts;
-      }
-      return { parts: current, notes };
-    };
-
-    const { parts: validated, notes } = await fixup(plan.parts);
-    if (notes.length) log(`"${a.name}" dispatched with recorded conflicts: ${notes.length} (the champion's integration brief carries them)`);
-    const dispatch: Part[] = validated;
-
-    /**
-     * The paths a part's checkpoint covers: its declared files under this
-     * champion's namespace, spelled the way the existence probe spells them. A
-     * part's files are exclusive by construction (the dispatch gate refuses a
-     * collision), which is what makes restoring them safe while the part's
-     * siblings build into the same namespace.
-     */
-    const ownedPaths = (p: Part): string[] => (p.files ?? []).map((f) => `${ns}${f}`);
-
-    // One level of recovery when a builder exhausts its tool rounds: the ask
-    // was too big, not the builder broken. The SAME builder (it alone knows
-    // its own progress) either splits the remaining work into atomic
-    // sub-parts or reports itself stuck; sub-parts are dispatched and merged.
-    // Depth is one — a sub-part that caps again fails the run loudly.
-    //
-    // The whole build of the part runs under a checkpoint of the part's own
-    // paths, so a throw mid-build takes its tree with it instead of leaving
-    // debris the champion would integrate as work; the same checkpoint is
-    // restored when the part's report does not check out (see `checked`).
-    const buildPart = async (p: Part): Promise<PartResult> =>
-      buildUnderCheckpoint(world, { label: partLabel(p), paths: ownedPaths(p) }, (cp) => buildOnePart(p, cp));
-
-    const buildOnePart = async (p: Part, cp: Checkpoint): Promise<PartResult> => {
-      const builder = agent(`Builder for ${a.name} · ${p.title}`, {
-        system:
-          "You build one atomic part of one champion's approach in a solution competition. " +
-          "You see the problem, your part, and nothing else: no other parts, no other champions, no other files. " +
-          "If a check is impossible to pass, or your instructions contradict each other, escalate and say so plainly rather than working around it.",
-        // The plane's contract: owned files, the isolation rule, acceptance
-        // criteria, and the interface this part must expose. The engine renders
-        // it into every ask and journals it once, so the dispatch is auditable
-        // after the fact — the same contract shape the dispatch gate validates.
-        contract: {
-          files: p.files,
-          acceptance: p.acceptance,
-          provides: p.provides ? `as declared for this part: ${p.provides}` : undefined,
-        },
-        // This builder's window on the run's fact store: the public facts, plus
-        // the facts about this part alone. Naming a sibling part is refused, so
-        // the isolation the parts are dispatched under is the isolation they
-        // keep while working.
-        scope: { part: partScope(ns, p) },
+// The competition settles: one champion's failure is that champion's failure,
+// not the other entries'. Whatever happens inside a champion — its own cap, a
+// builder that could not build, a part that failed — the siblings that made it
+// back are still judged, and the ones that did not are recorded with their
+// reason instead of taking the run down. A head-to-head comparison needs two
+// entries; below that there is nothing to compare, and the run says so rather
+// than letting a single survivor be crowned by default as if it had been beaten.
+const settledApproaches = await settleMembers(
+  strategy.approaches.map((a, i) => ({
+    name: String(a?.name ?? `#${i + 1}`),
+    run: async () => {
+      // Each champion owns a namespace: out/adversarial/<approach-id>/ — builders
+      // of different champions can never collide by construction, and the
+      // cross-champion file clobbers seen in run 2026-10-05_12-08-04 become
+      // impossible.
+      const ns = `out/adversarial/${String(a.id).replace(/[^\w-]/g, "")}/`;
+      const harness = renderBrief({
+        stack: strategy.stack,
+        ns,
+        verification: `run ONLY the tests your own files define (e.g. node --test ${ns}<file>.test.js); whole-suite or other parts' tests are out of bounds`,
+        facts: env.facts,
       });
-      world.remember({ kind: "status", part: partScope(ns, p), fact: "dispatched" });
-      const brief = (part: Part): string =>
-        `${harness}\n\n` +
-        `Problem: ${task}\n\nChampion's approach: ${a.name} — ${a.rationale}\n` +
-        `Stack: ${strategy.stack}\n\n` +
-        `YOUR PART (${part.title}):\n${part.instruction}\n\n` +
-        `Return built, location, and provides (the interface you actually exposed: paths + exported names).`;
+      const champion = agent(`Champion for ${a.name}`, {
+        system:
+          "You are one champion in a solution competition. Solve the problem YOUR way, completely " +
+          "and to the best of your ability — you never see the other entries. " +
+          "If a check is impossible to pass, or your instructions contradict each other, escalate and say so plainly rather than working around it.",
+      });
+      // Atomic decomposition with a full dispatch contract: every part declares
+      // the files it exclusively owns, acceptance criteria restated from the
+      // task's constraints (no new arithmetic), and the interface it exposes.
+      // No part may depend on another part's output — integration is the
+      // champion's job alone.
+      const plan = await champion.ask<PartList>(
+        `Problem: ${task}\n\nYour assigned approach: ${a.name} — ${a.rationale}\n` +
+          `Stack (pinned for the whole competition): ${strategy.stack}\n` +
+          `Every file you name is created under ${ns} (this prefix is added for you; write relative paths).\n\n` +
+          `${harness}\n\n` +
+          "Decompose YOUR approach into 2 to 5 atomic parts. Each part must be completable as ONE " +
+          "standalone completion by a builder who sees nothing but the problem and that part's entry. " +
+          "For each part return: title; instruction (what to build); files (every workspace path the part " +
+          "creates or modifies — EXCLUSIVE, no other part may list the same path); acceptance (criteria " +
+          "restated from the problem's stated constraints or mechanically checkable — never new arithmetic " +
+          "or new scenarios); provides (the exact interface the part exposes: paths + exported names/signatures). " +
+          "No part may reference, wait for, or modify another part's work — if two things share a file or an " +
+          "interface, they are one part. If the approach cannot be split that way, escalate and say so plainly."
+      );
 
-      // The part's spend is a run fact, not a line in a provider's dashboard.
-      // The champion integrates against these parts, and a part that cost 60k
-      // tokens is a different thing to integrate than one that cost 3k — the
-      // agent's own stats are the source, the same numbers its journal
-      // `account` lines carry.
-      const noteCost = (part: Part, asker: typeof builder): void => {
-        const st = asker.stats;
+      // Dispatch validation: deterministic checks first (code), then the sys1
+      // gate. One fix-up round for everything rejected; what still fails at
+      // depth's end dispatches with the conflict recorded — the champion's
+      // integration brief receives it explicitly.
+      const fixup = async (parts: Part[]): Promise<{ parts: Part[]; notes: string[] }> => {
+        const notes: string[] = [];
+        let current = parts;
+        for (let round = 0; round < 2; round++) {
+          const problems: string[] = validateContract(current);
+          for (const p of current) {
+            const g = await judgeContract(p, task, sys1.judge);
+            const v = gateVerdict(g);
+            log(`gate "${partLabel(p)}" → ${v}`);
+            world.remember({ kind: "verdict", part: partScope(ns, p), fact: v });
+            if (gateNeedsFixup(g)) problems.push(`"${p.title}": ${v}`);
+          }
+          if (!problems.length) return { parts: current, notes };
+          if (round === 1) {
+            notes.push(...problems);
+            return { parts: current, notes };
+          }
+          log(`dispatch rejected ${problems.length} part problem(s) — one fix-up round`);
+          const fixed = await champion.ask<PartList>(
+            `The dispatch validator rejected parts of your plan:\n${problems.map((s) => `- ${s}`).join("\n")}\n\n` +
+              `Return the CORRECTED full part list (same fields: title, instruction, files, acceptance, provides). ` +
+              `Every part standalone: its files disjoint from every other part's, its instruction naming only paths ` +
+              `it owns, its acceptance criteria consistent with the problem's constraints. Split parts that bundle ` +
+              `concerns; restate criteria that introduced new arithmetic.`
+          );
+          current = fixed.parts;
+        }
+        return { parts: current, notes };
+      };
+
+      const { parts: validated, notes } = await fixup(plan.parts);
+      if (notes.length) log(`"${a.name}" dispatched with recorded conflicts: ${notes.length} (the champion's integration brief carries them)`);
+      const dispatch: Part[] = validated;
+
+      /**
+       * The paths a part's checkpoint covers: its declared files under this
+       * champion's namespace, spelled the way the existence probe spells them. A
+       * part's files are exclusive by construction (the dispatch gate refuses a
+       * collision), which is what makes restoring them safe while the part's
+       * siblings build into the same namespace.
+       */
+      const ownedPaths = (p: Part): string[] => (p.files ?? []).map((f) => `${ns}${f}`);
+
+      // One level of recovery when a builder exhausts its tool rounds: the ask
+      // was too big, not the builder broken. The SAME builder (it alone knows
+      // its own progress) either splits the remaining work into atomic
+      // sub-parts or reports itself stuck; sub-parts are dispatched and merged.
+      // Depth is one — a sub-part that caps again fails the run loudly.
+      //
+      // The whole build of the part runs under a checkpoint of the part's own
+      // paths, so a throw mid-build takes its tree with it instead of leaving
+      // debris the champion would integrate as work; the same checkpoint is
+      // restored when the part's report does not check out (see `checked`).
+      const buildPart = async (p: Part): Promise<PartResult> =>
+        buildUnderCheckpoint(world, { label: partLabel(p), paths: ownedPaths(p) }, (cp) => buildOnePart(p, cp));
+
+      const buildOnePart = async (p: Part, cp: Checkpoint): Promise<PartResult> => {
+        const builder = agent(`Builder for ${a.name} · ${p.title}`, {
+          system:
+            "You build one atomic part of one champion's approach in a solution competition. " +
+            "You see the problem, your part, and nothing else: no other parts, no other champions, no other files. " +
+            "If a check is impossible to pass, or your instructions contradict each other, escalate and say so plainly rather than working around it.",
+          // The plane's contract: owned files, the isolation rule, acceptance
+          // criteria, and the interface this part must expose. The engine renders
+          // it into every ask and journals it once, so the dispatch is auditable
+          // after the fact — the same contract shape the dispatch gate validates.
+          contract: {
+            files: p.files,
+            acceptance: p.acceptance,
+            provides: p.provides ? `as declared for this part: ${p.provides}` : undefined,
+          },
+          // This builder's window on the run's fact store: the public facts, plus
+          // the facts about this part alone. Naming a sibling part is refused, so
+          // the isolation the parts are dispatched under is the isolation they
+          // keep while working.
+          scope: { part: partScope(ns, p) },
+        });
+        world.remember({ kind: "status", part: partScope(ns, p), fact: "dispatched" });
+        const brief = (part: Part): string =>
+          `${harness}\n\n` +
+          `Problem: ${task}\n\nChampion's approach: ${a.name} — ${a.rationale}\n` +
+          `Stack: ${strategy.stack}\n\n` +
+          `YOUR PART (${part.title}):\n${part.instruction}\n\n` +
+          `Return built, location, and provides (the interface you actually exposed: paths + exported names).`;
+
+        // The part's spend is a run fact, not a line in a provider's dashboard.
+        // The champion integrates against these parts, and a part that cost 60k
+        // tokens is a different thing to integrate than one that cost 3k — the
+        // agent's own stats are the source, the same numbers its journal
+        // `account` lines carry.
+        const noteCost = (part: Part, asker: typeof builder): void => {
+          const st = asker.stats;
+          world.remember({
+            kind: "status",
+            part: partScope(ns, part),
+            fact:
+              `spent ${st.asks} ask(s) and ${st.toolCalls} tool call(s): ` +
+              `${st.promptTokens} prompt + ${st.completionTokens} completion tokens` +
+              `${st.compactions ? `, ${st.compactions} compaction(s)` : ""}`,
+          });
+        };
+
+        // Result shaping: check the report against the contract before the champion
+        // ever sees it. One re-ask naming what did not check out, because the agent
+        // that built the part is the only one that knows whether it mis-reported or
+        // never wrote the file. What still fails goes upstream annotated — a champion
+        // that integrates a defective part without being told is the failure this
+        // check exists to prevent, so "unverified" travels with the result. And
+        // because a report the plane cannot trust is a tree it cannot trust either,
+        // a still-failing part's owned paths are rolled back before it travels.
+        const checked = async (part: Part, result: PartResult, asker: typeof builder, cp: Checkpoint): Promise<PartResult> => {
+          let problems = resultProblems(ns, part, result);
+          if (problems.length) {
+            log(`"${partLabel(part)}" did not check out on the way back (${problems.length}) — one re-ask`);
+            result = await asker.ask<PartResult>(
+              `${brief(part)}\n\nYour report did not check out against your own contract:\n` +
+                problems.map((x) => `- ${x}`).join("\n") +
+                `\n\nCorrect it. If you described work you did not write, describe what you actually did; if you wrote ` +
+                `the files and reported them wrongly, correct the report. Return built, location, and provides again.`
+            );
+            problems = resultProblems(ns, part, result);
+          }
+          let out: PartResult;
+          if (problems.length) {
+            // Acceptance failure. The plane cannot tell a file this part wrote
+            // from one it claimed, so the tree is untrustworthy with the report:
+            // the part's own paths go back to what they were before it ran, and
+            // the champion is told what was rolled back rather than handed paths
+            // that are no longer there.
+            const rb = await world.rollback(cp);
+            log(`"${partLabel(part)}" rolled back: ${rb.restored} restored, ${rb.removed} removed${rb.left.length ? `, ${rb.left.length} left` : ""}`);
+            world.remember({ kind: "status", part: partScope(ns, part), fact: `rolled back: ${rb.restored} restored, ${rb.removed} removed` });
+            out = {
+              ...result,
+              built: `${result.built} [ROLLED BACK — no files survive this part]`,
+              location: `(rolled back — no files survive) ${result.location}`,
+              unverified: `${problems.length} problem(s) with this part's own report: ${problems.join("; ")}`,
+            };
+          } else {
+            out = result;
+          }
+          noteCost(part, asker);
+          return out;
+        };
+
+        try {
+          return await checked(p, await builder.ask<PartResult>(brief(p)), builder, cp);
+        } catch (e) {
+          if (!/did not settle after \d+ tool rounds/.test(String(e?.message ?? e))) throw e;
+          log(`"${partLabel(p)}" hit the tool-round cap — decomposing the part (one level)`);
+          const split = await builder.ask<PartList>(
+            `Your attempt at this part hit the tool-round cap before completing. If you were stuck in a loop on one ` +
+              `problem rather than steadily building, return {"parts":[]} — the run will escalate. Otherwise return ` +
+              `2 to 3 ATOMIC sub-parts that complete the remaining work: each with title, instruction, files (subsets ` +
+              `of the paths you already own), acceptance, and provides; each instruction states exactly what already ` +
+              `exists from your attempt and what to add.`
+          );
+          if (!split.parts.length) {
+            throw new Error(`part "${p.title}" is stuck, not big — escalating per the builder's own report`);
+          }
+          // The parent's own spend — the capped attempt plus the split ask — is
+          // noted here, because the sub-parts below note theirs and the part as a
+          // whole cost both.
+          noteCost(p, builder);
+          // Each sub-agent checks its own report, so the re-ask goes to the agent
+          // that did the work rather than to the parent that dispatched it.
+          const subs = await Promise.all(
+            split.parts.map((sp) => {
+              const sub = agent(`Builder for ${a.name} · ${sp.title}`, {
+                system:
+                  "You build one atomic part of one champion's approach in a solution competition. " +
+                  "You see the problem, your part, and nothing else: no other parts, no other champions, no other files. " +
+                  "If a check is impossible to pass, or your instructions contradict each other, escalate and say so plainly rather than working around it.",
+                contract: {
+                  files: sp.files,
+                  acceptance: sp.acceptance,
+                  provides: sp.provides ? `as declared for this part: ${sp.provides}` : undefined,
+                  extra:
+                    "A previous builder attempt on the parent part hit the tool-round cap; its partial work may already exist in the owned paths.",
+                },
+                scope: { part: partScope(ns, sp) },
+              });
+              world.remember({ kind: "status", part: partScope(ns, sp), fact: "dispatched" });
+              return { sp, sub };
+            })
+          );
+          const built = await Promise.all(
+            // A sub-part is a part: its own checkpoint over its own paths, so one
+            // sub-part rolling back does not take a sibling's work with it.
+            subs.map(({ sp, sub }) =>
+              buildUnderCheckpoint(world, { label: partLabel(sp), paths: ownedPaths(sp) }, async (subCp) => ({
+                sp,
+                result: await checked(sp, await sub.ask<PartResult>(brief(sp)), sub, subCp),
+              }))
+            )
+          );
+          const unverified = built.filter((b) => b.result.unverified);
+          return {
+            built: built.map((s) => s.result.built).join(" · "),
+            location: [...new Set(built.map((s) => s.result.location))].join(", "),
+            provides: built.map((s) => s.result.provides).join("; "),
+            ...(unverified.length ? { unverified: unverified.map((u) => u.result.unverified).join(" · ") } : {}),
+          };
+        }
+      };
+      // Every sibling is settled, whatever happens to the others: one part's
+      // failure is that part's failure, not the champion's whole build. A part
+      // that threw arrives here as a result labelled with why — its own paths
+      // were already rolled back by the checkpoint it built under, so it leaves
+      // no debris — and the champion's integration brief carries that label the
+      // same way it carries a report that did not check out, because the champion
+      // is the one agent that can reconcile a missing part with the rest.
+      // A champion needs one part to carry on integrating, so the parts settle
+      // at minimum 1 — not the competition's two. Same settlement, different bar.
+      const settled = await settleMembers(
+        dispatch.map((p) => ({ name: p.title, run: () => buildPart(p) })),
+        { minimum: 1 }
+      );
+      const parts: PartResult[] = settled.outcomes.map((o, i) =>
+        o.status === "fulfilled"
+          ? (o.value as PartResult)
+          : {
+              title: dispatch[i].title,
+              built: `[NOT BUILT — this part failed and its files were rolled back]`,
+              location: `(failed — no files survive) ${ns}`,
+              provides: "",
+              unverified: `this part did not build: ${o.reason}`,
+            }
+      );
+      // The store records that each part came back and how — including the parts
+      // that did not check out, so the run's own record of itself is not
+      // flattering. The champion's brief already carries all of this by push.
+      for (const [i, p] of dispatch.entries()) {
         world.remember({
           kind: "status",
-          part: partScope(ns, part),
-          fact:
-            `spent ${st.asks} ask(s) and ${st.toolCalls} tool call(s): ` +
-            `${st.promptTokens} prompt + ${st.completionTokens} completion tokens` +
-            `${st.compactions ? `, ${st.compactions} compaction(s)` : ""}`,
+          part: partScope(ns, p),
+          fact: parts[i].unverified
+            ? parts[i].built.startsWith("[NOT BUILT")
+              ? `did not build: ${parts[i].unverified}`
+              : "built, but its own report did not check out"
+            : "built",
         });
-      };
-
-      // Result shaping: check the report against the contract before the champion
-      // ever sees it. One re-ask naming what did not check out, because the agent
-      // that built the part is the only one that knows whether it mis-reported or
-      // never wrote the file. What still fails goes upstream annotated — a champion
-      // that integrates a defective part without being told is the failure this
-      // check exists to prevent, so "unverified" travels with the result. And
-      // because a report the plane cannot trust is a tree it cannot trust either,
-      // a still-failing part's owned paths are rolled back before it travels.
-      const checked = async (part: Part, result: PartResult, asker: typeof builder, cp: Checkpoint): Promise<PartResult> => {
-        let problems = resultProblems(ns, part, result);
-        if (problems.length) {
-          log(`"${partLabel(part)}" did not check out on the way back (${problems.length}) — one re-ask`);
-          result = await asker.ask<PartResult>(
-            `${brief(part)}\n\nYour report did not check out against your own contract:\n` +
-              problems.map((x) => `- ${x}`).join("\n") +
-              `\n\nCorrect it. If you described work you did not write, describe what you actually did; if you wrote ` +
-              `the files and reported them wrongly, correct the report. Return built, location, and provides again.`
-          );
-          problems = resultProblems(ns, part, result);
-        }
-        let out: PartResult;
-        if (problems.length) {
-          // Acceptance failure. The plane cannot tell a file this part wrote
-          // from one it claimed, so the tree is untrustworthy with the report:
-          // the part's own paths go back to what they were before it ran, and
-          // the champion is told what was rolled back rather than handed paths
-          // that are no longer there.
-          const rb = await world.rollback(cp);
-          log(`"${partLabel(part)}" rolled back: ${rb.restored} restored, ${rb.removed} removed${rb.left.length ? `, ${rb.left.length} left` : ""}`);
-          world.remember({ kind: "status", part: partScope(ns, part), fact: `rolled back: ${rb.restored} restored, ${rb.removed} removed` });
-          out = {
-            ...result,
-            built: `${result.built} [ROLLED BACK — no files survive this part]`,
-            location: `(rolled back — no files survive) ${result.location}`,
-            unverified: `${problems.length} problem(s) with this part's own report: ${problems.join("; ")}`,
-          };
-        } else {
-          out = result;
-        }
-        noteCost(part, asker);
-        return out;
-      };
-
-      try {
-        return await checked(p, await builder.ask<PartResult>(brief(p)), builder, cp);
-      } catch (e) {
-        if (!/did not settle after \d+ tool rounds/.test(String(e?.message ?? e))) throw e;
-        log(`"${partLabel(p)}" hit the tool-round cap — decomposing the part (one level)`);
-        const split = await builder.ask<PartList>(
-          `Your attempt at this part hit the tool-round cap before completing. If you were stuck in a loop on one ` +
-            `problem rather than steadily building, return {"parts":[]} — the run will escalate. Otherwise return ` +
-            `2 to 3 ATOMIC sub-parts that complete the remaining work: each with title, instruction, files (subsets ` +
-            `of the paths you already own), acceptance, and provides; each instruction states exactly what already ` +
-            `exists from your attempt and what to add.`
-        );
-        if (!split.parts.length) {
-          throw new Error(`part "${p.title}" is stuck, not big — escalating per the builder's own report`);
-        }
-        // The parent's own spend — the capped attempt plus the split ask — is
-        // noted here, because the sub-parts below note theirs and the part as a
-        // whole cost both.
-        noteCost(p, builder);
-        // Each sub-agent checks its own report, so the re-ask goes to the agent
-        // that did the work rather than to the parent that dispatched it.
-        const subs = await Promise.all(
-          split.parts.map((sp) => {
-            const sub = agent(`Builder for ${a.name} · ${sp.title}`, {
-              system:
-                "You build one atomic part of one champion's approach in a solution competition. " +
-                "You see the problem, your part, and nothing else: no other parts, no other champions, no other files. " +
-                "If a check is impossible to pass, or your instructions contradict each other, escalate and say so plainly rather than working around it.",
-              contract: {
-                files: sp.files,
-                acceptance: sp.acceptance,
-                provides: sp.provides ? `as declared for this part: ${sp.provides}` : undefined,
-                extra:
-                  "A previous builder attempt on the parent part hit the tool-round cap; its partial work may already exist in the owned paths.",
-              },
-              scope: { part: partScope(ns, sp) },
-            });
-            world.remember({ kind: "status", part: partScope(ns, sp), fact: "dispatched" });
-            return { sp, sub };
-          })
-        );
-        const built = await Promise.all(
-          // A sub-part is a part: its own checkpoint over its own paths, so one
-          // sub-part rolling back does not take a sibling's work with it.
-          subs.map(({ sp, sub }) =>
-            buildUnderCheckpoint(world, { label: partLabel(sp), paths: ownedPaths(sp) }, async (subCp) => ({
-              sp,
-              result: await checked(sp, await sub.ask<PartResult>(brief(sp)), sub, subCp),
-            }))
-          )
-        );
-        const unverified = built.filter((b) => b.result.unverified);
-        return {
-          built: built.map((s) => s.result.built).join(" · "),
-          location: [...new Set(built.map((s) => s.result.location))].join(", "),
-          provides: built.map((s) => s.result.provides).join("; "),
-          ...(unverified.length ? { unverified: unverified.map((u) => u.result.unverified).join(" · ") } : {}),
-        };
       }
-    };
-    const parts = await Promise.all(dispatch.map((p) => buildPart(p)));
-    // The store records that each part came back and how — including the parts
-    // that did not check out, so the run's own record of itself is not
-    // flattering. The champion's brief already carries all of this by push.
-    for (const [i, p] of dispatch.entries()) {
-      world.remember({
-        kind: "status",
-        part: partScope(ns, p),
-        fact: parts[i].unverified ? "built, but its own report did not check out" : "built",
-      });
-    }
-    return champion.ask<Solution>(
-      `Problem: ${task}\n\nYour approach: ${a.name} — ${a.rationale}\n` +
-        `Stack: ${strategy.stack}\n\n` +
-        `Your parts, built by your builders:\n${dispatch
-          .map(
-            (p, i) =>
-              `PART ${i + 1} (${p.title})\n  built: ${parts[i].built}\n  location: ${parts[i].location}\n  provides: ${parts[i].provides}` +
-              // A part that failed its own check is labelled, not hidden: the
-              // champion is the only agent that sees the whole approach, so it
-              // is the one that must reconcile a defective part.
-              (parts[i].unverified ? `\n  UNVERIFIED: ${parts[i].unverified}` : "")
-          )
-          .join("\n\n")}\n\n` +
-        (notes.length ? `Dispatch conflicts you must reconcile during integration:\n${notes.map((s) => `- ${s}`).join("\n")}\n\n` : "") +
-        "Integrate your parts into ONE complete solution for the problem under " +
-        `${ns}. If anything is missing or contradictory between parts, fix it in the integration — you own the ` +
-        "whole approach. Return approach, solution, location, and whyBest."
-    );
-  })
+      const failed = parts.filter((p) => p.unverified).length;
+      if (failed) log(`"${a.name}" is integrating ${failed} part(s) that came back labelled`);
+      return champion.ask<Solution>(
+        `Problem: ${task}\n\nYour approach: ${a.name} — ${a.rationale}\n` +
+          `Stack: ${strategy.stack}\n\n` +
+          `Your parts, built by your builders:\n${dispatch
+            .map(
+              (p, i) =>
+                `PART ${i + 1} (${p.title})\n  built: ${parts[i].built}\n  location: ${parts[i].location}\n  provides: ${parts[i].provides}` +
+                // A part that failed its own check is labelled, not hidden: the
+                // champion is the only agent that sees the whole approach, so it
+                // is the one that must reconcile a defective part.
+                (parts[i].unverified ? `\n  UNVERIFIED: ${parts[i].unverified}` : "")
+            )
+            .join("\n\n")}\n\n` +
+          (notes.length ? `Dispatch conflicts you must reconcile during integration:\n${notes.map((s) => `- ${s}`).join("\n")}\n\n` : "") +
+          "Integrate your parts into ONE complete solution for the problem under " +
+          `${ns}. If anything is missing or contradictory between parts, fix it in the integration — you own the ` +
+          "whole approach. Return approach, solution, location, and whyBest."
+      );
+    },
+  })),
+  { minimum: COMPETITION_MINIMUM }
 );
+
+const solutions: Solution[] = [];
+const failedChampions: { name: string; reason: string }[] = [];
+for (const o of settledApproaches.outcomes) {
+  if (o.status === "fulfilled") solutions.push(o.value as Solution);
+  else failedChampions.push({ name: o.name, reason: o.reason });
+}
+if (failedChampions.length) {
+  log(`${failedChampions.length} champion(s) failed and settled out of the competition: ${failedChampions.map((c) => c.name).join(", ")}`);
+  for (const c of failedChampions) {
+    world.remember({ kind: "status", part: `champion:${c.name}`, fact: `failed and settled out: ${c.reason}` });
+  }
+}
+if (!solutions.length) {
+  throw new Error(`every champion failed and nothing survived to judge: ${failedChampions.map((c) => `${c.name}: ${c.reason}`).join("; ")}`);
+}
+log(`${solutions.length} of ${strategy.approaches.length} champion(s) came back with a solution`);
 
 phase("Judge the solutions head to head");
-const judge = agent("Judge", {
-  system:
-    "You judge a solution competition head to head: pick the winner, say what would break it, " +
-    "and name any concrete elements from the losing entries worth adopting. " +
-    "Judge from the solutions as written — ask for failures, not approval. " +
-    "If a check is impossible to pass, or your instructions contradict each other, escalate and say so plainly rather than working around it.",
-});
-const judgment = await judge.ask<Judgment>(
-  `Problem: ${task}\n\nCompeting solutions:\n${JSON.stringify(solutions)}\n\n` +
-    "Return winner, why, weaknesses, and adopt."
-);
-world.remember({ kind: "decision", fact: `the head-to-head judge picked: ${String(judgment.winner ?? "")}` });
+// Two entries and the comparison is real. One entry and it is not a comparison
+// that happened — the run delivers the survivor and records that nothing beat
+// it, which is a different claim from having won. The threshold is the plane's:
+// it settled the set against the minimum a head-to-head needs, so this workflow
+// declares the comparison's bar nowhere of its own.
+const compared = settledApproaches.enough;
+let judgment: Judgment;
+if (compared) {
+  const judge = agent("Judge", {
+    system:
+      "You judge a solution competition head to head: pick the winner, say what would break it, " +
+      "and name any concrete elements from the losing entries worth adopting. " +
+      "Judge from the solutions as written — ask for failures, not approval. " +
+      "If a check is impossible to pass, or your instructions contradict each other, escalate and say so plainly rather than working around it.",
+    // Verification-shaped: every ask this agent makes judges solutions as written
+    // and builds nothing, so a judge still looping after a dozen rounds is stuck
+    // rather than big — the plane escalates instead of decomposing a verdict.
+    shape: "verify",
+  });
+  judgment = await judge.ask<Judgment>(
+    `Problem: ${task}\n\nCompeting solutions:\n${JSON.stringify(solutions)}\n\n` +
+      "Return winner, why, weaknesses, and adopt."
+  );
+  world.remember({ kind: "decision", fact: `the head-to-head judge picked: ${String(judgment.winner ?? "")}` });
+} else {
+  log(`only ${solutions.length} champion(s) survived — there is no head-to-head judgment to make; the survivor is delivered with the degradation recorded`);
+  world.remember({
+    kind: "decision",
+    fact: `only ${solutions.length} of ${strategy.approaches.length} champion(s) survived; no head-to-head judgment happened, and the survivor was delivered as the only entry`,
+  });
+  judgment = {
+    winner: String(solutions[0].approach ?? "the surviving champion"),
+    why:
+      `this entry was the only champion that survived; ${failedChampions.length} failed and it was not compared against any ` +
+      `other, so "winning" here means "still standing"`,
+    weaknesses: [],
+    adopt: [],
+  };
+}
 
 const findings: Finding[] = [];
+// A champion that failed is a finding, not a footnote: the run's own record of
+// itself is not flattering, and the operator needs the reason the competition
+// it asked for did not fully happen.
+for (const c of failedChampions) {
+  const f: Finding = {
+    where: `champion "${c.name}"`,
+    what: "this champion's solution never completed; its siblings were settled rather than discarded with it",
+    evidence: c.reason,
+    status: "verified",
+    severity: "high",
+  };
+  findings.push(f);
+  report(f);
+}
 for (const w of judgment.weaknesses) {
   const f: Finding = {
     where: `winning solution (${judgment.winner})`,
@@ -619,10 +717,12 @@ if (!dg.ran) log(`deliverable gate unavailable (${dg.detail}) — proceeding wit
 else if (dg.verdict === "not-supported") log(`deliverable gate still rejects after the repair round — proceeding with the verdict recorded`);
 
 return {
-  conclusion: `Winner: ${judgment.winner} — ${judgment.why} ${final.summary} Solution: ${final.path}.`,
+  conclusion: `${compared ? "Winner" : "Survivor"}: ${judgment.winner} — ${judgment.why} ${final.summary} Solution: ${final.path}.`,
   findings,
   verified: [
-    `${solutions.length} independent solutions were built and compared head to head`,
+    compared
+      ? `${solutions.length} independent solutions were built and compared head to head`
+      : `only ${solutions.length} of ${strategy.approaches.length} champion(s) survived; no head-to-head comparison happened and the survivor is the deliverable by default`,
     "the winner's weaknesses were named by the judge rather than hidden",
     "every dispatched part passed the deterministic dispatch contract and the sys1 gate",
   ],

@@ -295,6 +295,82 @@ accounts for both, per ask.
 answer the calibration token and the acceptance criteria that live only in the
 brief and the contract.
 
+### What an ask may spend, and what happens when it runs out
+
+A ceiling is a shape's policy, not the caller's, because the plane knows what
+each kind of ask is for. An agent declares `shape: "build"` (the default) or
+`shape: "verify"`, and may tighten its own line with `budget: { rounds, tokens }`.
+
+- A build ask keeps the run's `--max-rounds` and a token ceiling of 2M prompt
+  tokens. The round cap catches stubbornness; the token ceiling catches cost,
+  which the round count cannot see — every round resends the history, so the
+  sum grows quadratically and an operator who raises `--max-rounds` raises the
+  bill with it.
+- A verification or loop-shaped ask draws a smaller line on both axes: 12 rounds
+  and one window's worth of tokens. Trouble in a verdict shows in the first few
+  rounds, so waiting longer costs tokens and changes nothing. `--max-rounds`
+  does not apply to it; a caller that needs a different line tightens it at the
+  ask.
+- What happens at the line is the difference the shape is for. A build ask throws
+  with its round count — that is the error `adversarial-solve`'s cap recovery
+  matches, because a part that was merely too big should decompose. A
+  verification-shaped ask has nothing to decompose (splitting a verdict in half
+  does not produce two verdicts), so the plane escalates with the `stuck` topic
+  and ends the ask: an operator's `--answers '{"stuck":…}'` reaches it, and an
+  ask that cannot verify never hands back a result that could be mistaken for a
+  verdict.
+- Both axes are checked before a round rather than after, the same place
+  compaction is: an ask that has already spent its ceiling does not get another
+  round on top of it. The journal carries `budget` (the axis, what was spent, the
+  shape whose line it was), the `escalation` with topic `stuck`, and the
+  `account` line now naming the ask's shape and its line.
+
+`workflows/budgets-probe.ts` drives both axes of both shapes with real model
+calls, using tightened lines rather than a model's willingness to loop:
+`budget: { tokens: 1 }` makes the cap unavoidable at the second round's check
+whatever the model does, and one negative control settles inside a tight line to
+prove a ceiling is not a trap.
+
+### What happens when one member of a set fails
+
+A parallel set is a failure domain. A champion that runs out of budget, a part
+whose builder could not build, a member that throws before it starts — each is
+that member's failure, and the plane settles the set rather than letting one
+member's ending take the others' with it.
+
+- `settleMembers(members, { minimum })` runs every member, however the others
+  end, and then reports the set three ways over the same runs: `survivors` and
+  `failures` split it by outcome, `outcomes` keeps the declaration order so a
+  caller can label each member in its place, and `enough` is the only judgment
+  the plane makes — whether what survived meets the minimum. A member with no
+  `run()`, and one whose `run` throws before returning a promise, are that
+  member's recorded failure like any other; neither reaches a caller's catch.
+- The minimum is the bar for the *next* step, and it is declared by whoever
+  dispatched the set. A competition needs two entries to be a comparison, which
+  is why `COMPETITION_MINIMUM` is 2: crowning a lone survivor by default is a
+  different claim from having won. A parallel build needs one part for the
+  champion to carry on integrating, so the same settlement settles parts at
+  `{ minimum: 1 }`. The number is the plane's, so a workflow that fans out to a
+  single champion is saying the comparison it cannot make.
+- Below the bar, the caller degrades honestly. With one survivor there is no
+  head-to-head to make, so no judge is asked and the delivered entry says it was
+  the only one that survived — "still standing" rather than "winner". With none
+  there is no winner to name, and the run reports that rather than crowning an
+  empty set.
+- The run's own record is not flattering about any of it: each failed member is
+  remembered as a status fact with its reason, and a failed champion becomes a
+  high-severity finding, because the operator needs to know the competition they
+  asked for did not fully happen.
+
+`adversarial-solve` settles its champions at the competition minimum and its
+parts at one, and reads `compared` off the settlement rather than recounting
+survivors — the threshold for a head-to-head lives in exactly one place.
+`workflows/competition-probe.ts` runs a competition in which one champion dies
+before it spends a model call and asserts the two survivors are still judged, a
+lone survivor is delivered without a comparison being asked of it, a set with
+nothing surviving names no winner, and a member that cannot even run is recorded
+as its own failure.
+
 ### What agents cannot do
 
 - **Reach outside the workspace.** Every file tool resolves against the run's
