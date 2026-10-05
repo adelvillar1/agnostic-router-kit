@@ -153,6 +153,33 @@ A refused edit journals its own line — a fired line followed by silence would
 read as an edit that landed when the file never changed. It rides the same
 `workspace-io` grant as every other file tool.
 
+### Handing one concern to a sub-agent
+
+`delegate({task, contract})` is how an agent keeps its own context on the part
+it was dispatched for. It spawns a real agent of the run — same grants, same
+workspace, its own empty conversation — with `SUBAGENT_SYSTEM` as its system
+prompt, and returns the child's answer to the caller. The child's contract,
+its agent lines and its tool calls are journalled beneath the parent's label
+(`Coordinator → delegate`), and the child's asks and tool calls are added to
+the parent's stats, because delegation is a budget transfer rather than a
+fresh allowance.
+
+Two facts make it bounded rather than a hierarchy:
+
+- The `sub-agents` capability is off by default. A run that did not ask for it
+  refuses the call, and the refusal names the capability — the same journal
+  line the fired call would have written.
+- The depth cap is one, and it is a property of the surface rather than a rule
+  in a prompt. A child receives `childSurface()`, which has no `delegate`
+  definition, no implementation and no spawner; a parent descriptor arriving
+  with depth already set is refused too. There is no prompt a model can talk
+  its way past, because the tool is not there to call.
+
+A `delegate` worth dispatching is one self-contained concern — a lookup, a
+single file, one decision — stated fully, because the child sees none of the
+parent's context. Handing over the whole task is not delegation, it is a
+context split with extra steps.
+
 ### What agents cannot do
 
 - **Reach outside the workspace.** Every file tool resolves against the run's
