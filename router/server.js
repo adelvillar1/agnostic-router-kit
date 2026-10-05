@@ -35,8 +35,8 @@ import { offpeakWeight, computeQuotaState, pickCandidate } from "./quota.mjs";
 import { suggestDelegation } from "./suggest.mjs";
 import { judgeViaFastino } from "./fastino.mjs";
 import { createSwarm } from "./swarm.mjs";
-import { normalizeEvent, isTerminal } from "../lib/workflow/events.mjs";
-import { buildGraph } from "../lib/workflow/graph.mjs";
+import { normalizeEvent, isTerminal } from "workflow-plane/events.mjs";
+import { buildGraph } from "workflow-plane/graph.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const expand = (p) => (p.startsWith("~") ? path.join(os.homedir(), p.slice(1)) : p);

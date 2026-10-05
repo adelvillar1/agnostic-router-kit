@@ -27,7 +27,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { judgeContract, gateNeedsFixup, makeSys1Classifier, makeJudgingClassifier, makeRunMemory } from "../lib/workflow/harness.mjs";
+import { judgeContract, gateNeedsFixup, makeSys1Classifier, makeJudgingClassifier, makeRunMemory } from "workflow-plane/harness.mjs";
 
 const decoder = new TextDecoder();
 
