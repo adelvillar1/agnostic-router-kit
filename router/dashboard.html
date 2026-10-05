@@ -123,6 +123,27 @@
   .toast.bad { border-left-color: var(--err); }
   .mono-list { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
   .qcard { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+
+  /* ── workflow activity + graph tabs ── */
+  .badge.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
+  .badge.err { color: var(--err); border-color: color-mix(in srgb, var(--err) 45%, transparent); }
+  .badge.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+  #wfRunsTable tbody tr { cursor: pointer; }
+  #wfRunsTable tbody tr:hover td { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  .evfeed { font: 11.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; max-height: 340px; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+  .ev { display: flex; gap: 8px; align-items: baseline; }
+  .ev .t { color: var(--faint); flex: 0 0 58px; text-align: right; }
+  .ev .k { flex: 0 0 72px; color: var(--accent); font-size: 9.5px; text-transform: uppercase; letter-spacing: .5px; }
+  .ev .b { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  #gsvgWrap { position: relative; height: 640px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); overflow: hidden; cursor: grab; }
+  #gsvgWrap svg { width: 100%; height: 100%; display: block; }
+  #ghint { position: absolute; top: 10px; left: 12px; }
+  .gedge { fill: none; stroke: var(--line); stroke-opacity: .5; }
+  .gedge.hot { stroke: var(--accent); stroke-opacity: .8; }
+  .gnode { cursor: pointer; }
+  .gnode rect.body { fill: var(--panel2); }
+  .gnode text { font: 10.5px ui-monospace, Menlo, monospace; fill: var(--text); }
+  .gnode:hover rect.body, .gnode.sel rect.body { stroke-width: 2; filter: brightness(1.25); }
 </style>
 </head>
 <body>
@@ -142,6 +163,8 @@
   <button data-tab="providers">Providers</button>
   <button data-tab="quota">Quota</button>
   <button data-tab="workflows">Workflows</button>
+  <button data-tab="activity">Activity</button>
+  <button data-tab="graph">Graph</button>
 </nav>
 
 <main>
@@ -304,6 +327,53 @@
       <div class="row" style="margin-top:10px"><span class="hint" id="registrySummary"></span></div>
     </section>
   </div>
+
+  <!-- ══════════════════════════ ACTIVITY ══════════════════════════ -->
+  <div id="tab-activity" class="hidden">
+    <section class="panel">
+      <h2>Workflow runs</h2>
+      <div class="sub">Live over the kit's journal tail — every run it has written, active or finished. <b>stalled?</b> means the run is still open but nothing has landed for 2+ minutes; the stream refreshes ages every 5s. Click a row for its detail.</div>
+      <table id="wfRunsTable"><thead><tr>
+        <th>Run</th><th style="width:86px">Status</th><th class="n">Events</th><th class="n">Last event</th><th class="n">Started</th><th class="n">Duration</th>
+      </tr></thead><tbody></tbody></table>
+    </section>
+
+    <section class="panel hidden" id="wfDetail">
+      <h2>Run detail <span class="mono-list" id="wfDetailTitle"></span></h2>
+      <div id="wfSummaryStrip" style="margin-bottom:8px"></div>
+      <div id="wfConclusion"></div>
+      <div class="grid2" style="margin-top:10px">
+        <section class="panel" style="margin-bottom:0">
+          <h2>Phases</h2>
+          <div id="wfPhases"></div>
+          <h2 style="margin-top:12px">Artifacts</h2>
+          <div id="wfArtifacts"></div>
+          <h2 style="margin-top:12px">Gate verdicts in window</h2>
+          <div id="wfGates"></div>
+        </section>
+        <section class="panel" style="margin-bottom:0">
+          <h2>Agents</h2>
+          <table id="wfAgentsTable"><thead><tr><th>Actor</th><th class="n">Asks</th><th class="n">Tools</th><th class="n">Last</th></tr></thead><tbody></tbody></table>
+        </section>
+      </div>
+      <h2 style="margin-top:12px">Event feed</h2>
+      <div class="evfeed" id="wfFeed"></div>
+    </section>
+  </div>
+
+  <!-- ══════════════════════════ GRAPH ══════════════════════════ -->
+  <div id="tab-graph" class="hidden">
+    <section class="panel">
+      <h2>Session graph <span class="hint" id="gMeta"></span></h2>
+      <div class="sub">Plan → criteria → phases → runs → agents → artifacts → gates → commits → recaps, assembled read-only from run journals, plan markdown, the dev-decisions store, git log and recaps. Nodes appear live while a run executes — no refresh. Wheel zooms, drag pans, click a node for detail.</div>
+      <div id="gLegend" class="row" style="margin-bottom:8px"></div>
+      <div id="gsvgWrap"><svg id="gsvg" xmlns="http://www.w3.org/2000/svg"></svg><div id="ghint" class="hint">rendering…</div></div>
+    </section>
+    <section class="panel hidden" id="gdetail">
+      <h2 id="gdetailTitle"></h2>
+      <div id="gdetailBody"></div>
+    </section>
+  </div>
 </main>
 
 <div id="gate" class="hidden">
@@ -387,6 +457,7 @@ $("#gateGo").onclick = async () => {
     localStorage.setItem(TOKEN_KEY, token);
     $("#gate").classList.add("hidden");
     loadAll();
+    wfStartSse();
   } catch (e) { if (e.message !== "unauthorized") $("#gateErr").textContent = e.message; }
 };
 $("#gateToken").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#gateGo").click(); });
@@ -415,6 +486,8 @@ $$("nav button").forEach((b) => (b.onclick = () => {
   $$("nav button").forEach((x) => x.classList.toggle("on", x === b));
   $$("main > div").forEach((d) => d.classList.toggle("hidden", d.id !== `tab-${tab}`));
   loadAll();
+  if (tab === "activity") wfEnsure();
+  else if (tab === "graph") graphEnsure();
 }));
 $("#autoRef").onchange = () => setTimer();
 function setTimer() {
@@ -1006,6 +1079,425 @@ $("#revertRoster").onclick = async () => {
   catch (e) { if (e.message !== "unauthorized") toast(e.message, true); }
 };
 
+/* ── workflow activity + graph (one SSE stream feeds both) ──── */
+// The server's hello frame carries the current run snapshot, the 5s heartbeat
+// carries fresh per-run last-event ages, and journal events / graph deltas
+// arrive as the kit writes them. Strictly read-only: fetch and render only.
+const wf = { runs: new Map(), selected: null, feed: new Map(), es: null };
+const wfKindColor = {
+  plan: "#4f8cc9", criterion: "#3fb950", phase: "#8b949e", run: "#d29922",
+  agent: "#a371f7", part: "#bc8cff", artifact: "#db61a2", gate: "#f85149",
+  commit: "#7a828e", recap: "#39c5cf",
+};
+const gModel = { nodes: new Map(), edges: [], meta: null, sel: null, renderTimer: null };
+const gview = { x: 0, y: 0, w: null, h: null, w0: null };
+
+const durTxt = (ms) => !Number.isFinite(ms) ? "—"
+  : ms < 1000 ? `${Math.round(ms)}ms`
+  : ms < 90_000 ? `${(ms / 1000).toFixed(1)}s`
+  : ms < 5_400_000 ? `${(ms / 60_000).toFixed(1)}m`
+  : `${(ms / 3_600_000).toFixed(2)}h`;
+const ageTxt = (ms) => !Number.isFinite(ms) ? "—" : durTxt(Math.max(0, ms));
+const shortActor = (a) => String(a ?? "").replace(/^Builder for /, "").split(" · ")[0].slice(0, 70);
+const kindColor = (n) => wfKindColor[n.kind] ?? "#8b949e";
+
+function wfStartSse() {
+  if (wf.es || !token) return;
+  try { wf.es = new EventSource(`/api/workflow-events?token=${encodeURIComponent(token)}`); } catch { return; }
+  wf.es.onmessage = (m) => {
+    let f = null;
+    try { f = JSON.parse(m.data); } catch { return; }
+    if (f.type === "hello") {
+      for (const r of f.runs ?? []) wfMergeRun(r);
+      if (wf.selected) wfHydrateSelected();
+    } else if (f.type === "heartbeat") {
+      for (const r of f.runs ?? []) {
+        const st = wf.runs.get(r.runId);
+        if (st) { st.lastEventAgeMs = r.lastEventAgeMs; st.active = r.active; }
+      }
+      if (tab === "activity") renderWfRuns();
+    } else if (f.type === "summary") {
+      const st = wf.runs.get(f.runId);
+      if (st) st.summary = f.summary;
+      if (wf.selected === f.runId && tab === "activity") { renderWfRuns(); renderWfDetail(); }
+    } else if (f.type === "event") {
+      const st = wf.runs.get(f.runId);
+      if (st) { st.events = (st.events ?? 0) + 1; st.lastEventAgeMs = 0; }
+      if (wf.selected === f.runId) wfAppendFeed(f.event);
+      if (tab === "activity" && wf.selected === f.runId) renderWfRuns();
+    } else if (f.type === "graph-node" || f.type === "graph-edge") {
+      gApplyDelta(f);
+    }
+  };
+}
+
+function wfMergeRun(r) {
+  wf.runs.set(r.runId, { ...(wf.runs.get(r.runId) ?? {}), ...r });
+}
+
+async function wfEnsure() {
+  try {
+    const d = await api("/api/workflow-runs");
+    for (const r of d.runs ?? []) wfMergeRun(r);
+    renderWfRuns();
+    if (!wf.selected) {
+      const rows = [...wf.runs.values()].sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0));
+      const pick = rows.find((r) => r.active) ?? rows[0];
+      if (pick) wfSelect(pick.runId);
+    }
+  } catch (e) { if (e.message !== "unauthorized") toast(e.message, true); }
+}
+
+async function wfHydrateSelected() {
+  const id = wf.selected;
+  if (!id) return;
+  try {
+    const d = await api(`/api/workflow-run/${encodeURIComponent(id)}`);
+    if (wf.selected !== id) return;
+    wf.feed.set(id, d.events ?? []);
+    const st = wf.runs.get(id);
+    if (st) { st.summary = d.summary; st.active = d.active; }
+    if (tab === "activity") { renderWfRuns(); renderWfDetail(); }
+  } catch { if (wf.selected === id) $("#wfFeed").innerHTML = `<div class="dim">run detail unavailable</div>`; }
+}
+
+function wfSelect(runId) {
+  wf.selected = runId;
+  $("#wfDetail").classList.remove("hidden");
+  $("#wfDetailTitle").textContent = runId;
+  $("#wfFeed").innerHTML = `<div class="dim">loading…</div>`;
+  renderWfRuns();
+  wfHydrateSelected();
+}
+
+function runStatus(st) {
+  if (st.summary && st.summary.ok === false) return ["failed", "err"];
+  if (!st.active) return [st.summary ? "done" : "ended", ""];
+  const age = st.lastEventAgeMs;
+  if (Number.isFinite(age) && age > 120_000) return ["stalled?", "err"];
+  if (Number.isFinite(age) && age > 30_000) return ["quiet", "warn"];
+  return ["live", "ok"];
+}
+
+function renderWfRuns() {
+  const rows = [...wf.runs.values()].sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0));
+  $("#wfRunsTable tbody").innerHTML = rows.map((st) => {
+    const [label, cls] = runStatus(st);
+    return `<tr data-wfrun="${esc(st.runId)}" style="cursor:pointer;${st.runId === wf.selected ? "outline:1px solid var(--accent);outline-offset:-1px" : ""}">
+      <td><div class="mono-list">${esc(st.name ?? st.runId)}</div><div class="hint">${esc(st.runId)}</div></td>
+      <td><span class="badge ${cls}">${esc(label)}</span></td>
+      <td class="n">${fmtInt(st.events ?? 0)}</td>
+      <td class="n" style="${cls ? `color:var(--${cls})` : ""}">${esc(ageTxt(st.lastEventAgeMs))}</td>
+      <td class="n dim">${st.startedAt ? ago(st.startedAt) : "—"}</td>
+      <td class="n dim">${esc(durTxt(st.summary?.durationMs))}</td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="6" class="dim">no workflow runs yet — \`kit workflows run …\` starts one</td></tr>`;
+}
+
+let feedTimer = null;
+function wfAppendFeed(ev) {
+  const arr = wf.feed.get(wf.selected);
+  if (!arr || !ev) return;
+  arr.push(ev);
+  if (arr.length > 500) arr.splice(0, arr.length - 500);
+  if (!feedTimer) feedTimer = setTimeout(() => {
+    feedTimer = null;
+    if (tab === "activity" && wf.selected) $("#wfFeed").innerHTML = (wf.feed.get(wf.selected) ?? []).slice(-200).reverse().map(evLine).join("");
+  }, 300);
+}
+
+function evLine(e) {
+  const t = `<span class="t">+${esc(durTxt(e.t))}</span>`;
+  const k = `<span class="k">${esc(e.kind)}</span>`;
+  let b = "";
+  switch (e.kind) {
+    case "run-start": b = `run · ${esc(e.model ?? "")} <span class="dim">${esc(e.workdir ?? "")}</span>`; break;
+    case "phase": b = `<b>${esc(e.phase)}</b>`; break;
+    case "agent": b = `${esc(shortActor(e.actor))} asked${e.ms != null ? ` · ${durTxt(e.ms)}` : ""}${e.tools ? " · tools" : ""}`; break;
+    case "tool": b = `${esc(shortActor(e.actor))} → <b>${esc(e.tool)}</b> <span class="dim">${esc(e.args ?? "")}</span>`; break;
+    case "report": b = `· ${esc(e.item ?? "")}`; break;
+    case "escalation": b = `<span style="color:var(--warn)">⚠ ${esc(e.actor ?? "")}: ${esc(e.question ?? "")}</span>`; break;
+    case "artifact": b = `<b>artifact ${esc(e.artifactId)}</b>${e.version != null ? ` v${e.version}` : ""}${e.bytes != null ? ` · ${fmtTok(e.bytes)}B` : ""}${e.path ? ` <span class="dim">→ ${esc(e.path)}</span>` : ""}`; break;
+    case "command": b = `$ ${esc(e.command)} <span class="dim">${esc(e.args ?? "")}</span>`; break;
+    case "log": b = esc(e.message ?? ""); break;
+    case "warn": b = `<span style="color:var(--warn)">${esc(e.message ?? "")}</span>`; break;
+    case "run-done": b = `<span style="color:var(--ok)">✓ done${e.ms != null ? ` in ${durTxt(e.ms)}` : ""}</span> ${esc(e.result ?? "")}`; break;
+    case "run-failed": b = `<span style="color:var(--err)">✗ ${esc(e.error ?? "")}</span>`; break;
+    default: b = esc(JSON.stringify(e).slice(0, 160));
+  }
+  return `<div class="ev">${t}${k}<span class="b">${b}</span></div>`;
+}
+
+function renderWfDetail() {
+  const id = wf.selected;
+  if (!id) return;
+  const st = wf.runs.get(id) ?? {};
+  const evs = wf.feed.get(id) ?? [];
+  const s = st.summary;
+  $("#wfSummaryStrip").innerHTML = s
+    ? `<span class="badge ${s.ok ? "ok" : "err"}">${s.ok ? "ok" : "failed"}</span> <span class="hint">${esc(durTxt(s.durationMs))} · ${fmtInt(s.agentCalls ?? 0)} agent calls · ${fmtInt(s.phases?.length ?? 0)} phases</span>`
+    : (st.active ? `<span class="badge ok">running</span> <span class="hint">no summary yet — events land live</span>` : "");
+  const concl = s?.result?.conclusion ?? s?.error;
+  $("#wfConclusion").innerHTML = concl
+    ? `<pre class="out ${s?.ok === false ? "bad" : "good"}">${esc(String(concl).slice(0, 2000))}</pre>` : "";
+
+  const phases = (Array.isArray(s?.phases) ? s.phases : []).filter((p) => typeof p === "string" && p);
+  if (!phases.length) for (const e of evs) if (e.kind === "phase" && e.phase && !phases.includes(e.phase)) phases.push(e.phase);
+  $("#wfPhases").innerHTML = phases.map((p) => `<span class="chip">${esc(p)}</span>`).join(" ") || `<span class="hint">none yet</span>`;
+
+  const agents = new Map();
+  for (const e of evs) {
+    if ((e.kind !== "agent" && e.kind !== "tool") || !e.actor) continue;
+    const a = agents.get(e.actor) ?? { asks: 0, tools: 0, t: 0 };
+    if (e.kind === "agent") a.asks++; else a.tools++;
+    a.t = Math.max(a.t, e.t ?? 0);
+    agents.set(e.actor, a);
+  }
+  $("#wfAgentsTable tbody").innerHTML = [...agents.entries()].map(([actor, a]) =>
+    `<tr><td class="mono-list">${esc(shortActor(actor))}</td><td class="n">${a.asks}</td><td class="n">${a.tools}</td><td class="n dim">+${esc(durTxt(a.t))}</td></tr>`
+  ).join("") || `<tr><td colspan="4" class="dim">no agent activity yet</td></tr>`;
+
+  const arts = new Map();
+  for (const e of evs) if (e.kind === "artifact" && e.artifactId) {
+    const prev = arts.get(e.artifactId);
+    if (!prev || (e.version ?? 0) >= (prev.version ?? 0)) arts.set(e.artifactId, e);
+  }
+  // The summary is authoritative once it exists — the 500-event server buffer
+  // trims early artifact events on long runs.
+  for (const a of s?.artifacts ?? []) {
+    if (!a?.id) continue;
+    const prev = arts.get(a.id) ?? {};
+    arts.set(a.id, {
+      artifactId: a.id,
+      version: Math.max(prev.version ?? 0, Array.isArray(a.versions) ? a.versions.length : (a.version ?? 0)),
+      bytes: prev.bytes ?? null,
+      path: prev.path ?? a.path ?? null,
+    });
+  }
+  $("#wfArtifacts").innerHTML = [...arts.values()].sort((x, y) => String(x.artifactId).localeCompare(String(y.artifactId))).map((a) =>
+    `<div class="mono-list">▸ ${esc(a.artifactId)}${a.version != null ? ` v${a.version}` : ""}${a.bytes != null ? ` · ${fmtTok(a.bytes)}B` : ""}${a.path ? ` <span class="dim">→ ${esc(a.path)}</span>` : ""}</div>`
+  ).join("") || `<span class="hint">none yet</span>`;
+
+  // Gates are dev-decisions rows, not journal events — attribute them to the
+  // run by time window, the same heuristic the graph builder uses for swarms.
+  const t0 = st.startedAt ?? null;
+  const t1 = s?.durationMs != null && t0 != null ? t0 + s.durationMs : Date.now();
+  const gates = [...gModel.nodes.values()]
+    .filter((n) => n.kind === "gate" && n.ts)
+    .map((n) => ({ n, t: Date.parse(n.ts) }))
+    .filter(({ t }) => Number.isFinite(t) && t0 != null && t >= t0 - 1000 && t <= t1 + 1000)
+    .sort((a, b) => a.t - b.t);
+  $("#wfGates").innerHTML = gates.map(({ n }) =>
+    `<div class="mono-list"><b style="color:${n.verdict === "pass" || n.verdict === "pass-with-concerns" ? "var(--ok)" : "var(--err)"}">${esc(n.verdict ?? "?")}</b> · ${esc(n.label ?? "")} <span class="dim">${esc(n.provider ?? "")}</span></div>`
+  ).join("") || `<span class="hint">none in this run's window</span>`;
+
+  $("#wfFeed").innerHTML = evs.slice(-200).reverse().map(evLine).join("") || `<div class="dim">no events</div>`;
+}
+
+document.addEventListener("click", (e) => {
+  const tr = e.target.closest?.("[data-wfrun]");
+  if (tr) wfSelect(tr.dataset.wfrun);
+});
+
+/* ── graph tab: layered DAG over the same stream ────────────── */
+async function graphEnsure() {
+  try {
+    const g = await api("/api/workflow-graph");
+    gModel.meta = { counts: g.counts, generatedAt: g.generatedAt, kitHome: g.kitHome };
+    gModel.nodes = new Map((g.nodes ?? []).map((n) => [n.id, n]));
+    gModel.edges = g.edges ?? [];
+    renderGraphChrome();
+    drawGraph();
+  } catch (e) { if (e.message !== "unauthorized") toast(e.message, true); }
+}
+
+function gApplyDelta(f) {
+  if (f.type === "graph-node") {
+    if (!gModel.nodes.has(f.node.id)) gModel.nodes.set(f.node.id, f.node);
+  } else if (f.type === "graph-edge") {
+    if (!gModel.nodes.has(f.edge.from) || !gModel.nodes.has(f.edge.to)) return; // the node delta always arrives first
+    if (!gModel.edges.some((e) => e.from === f.edge.from && e.to === f.edge.to && e.kind === f.edge.kind)) gModel.edges.push(f.edge);
+  }
+  if (!gModel.renderTimer) gModel.renderTimer = setTimeout(() => { gModel.renderTimer = null; if (tab === "graph") drawGraph(); }, 400);
+}
+
+function renderGraphChrome() {
+  const c = gModel.meta?.counts;
+  $("#gMeta").textContent = c ? `${c.nodes} nodes · ${c.edges} edges · built ${ago(Date.parse(gModel.meta.generatedAt))} · kit ${gModel.meta.kitHome}` : "";
+  $("#gLegend").innerHTML = Object.entries(wfKindColor).map(([k, col]) =>
+    `<span class="chip"><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${col};margin-right:5px"></i>${k}</span>`).join("");
+}
+
+function gLayout() {
+  const nodes = [...gModel.nodes.values()];
+  const ids = new Set(nodes.map((n) => n.id));
+  const outs = new Map(nodes.map((n) => [n.id, []]));
+  const ins = new Map(nodes.map((n) => [n.id, []]));
+  const edges = gModel.edges.filter((e) => ids.has(e.from) && ids.has(e.to) && e.from !== e.to);
+  for (const e of edges) { outs.get(e.from).push(e.to); ins.get(e.to).push(e.from); }
+
+  // Longest-path layering (Kahn from the in-degree-0 roots). The builder never
+  // makes cycles; any leftover is pinned to layer 0 rather than dropped.
+  const layer = new Map();
+  const deg = new Map(nodes.map((n) => [n.id, ins.get(n.id).length]));
+  let frontier = nodes.filter((n) => deg.get(n.id) === 0).map((n) => n.id);
+  for (const id of frontier) layer.set(id, 0);
+  while (frontier.length) {
+    const next = [];
+    for (const id of frontier) {
+      for (const to of outs.get(id)) {
+        layer.set(to, Math.max(layer.get(to) ?? 0, layer.get(id) + 1));
+        deg.set(to, deg.get(to) - 1);
+        if (deg.get(to) === 0) next.push(to);
+      }
+    }
+    frontier = next;
+  }
+  for (const n of nodes) if (!layer.has(n.id)) layer.set(n.id, 0);
+
+  // Within-layer order: two barycenter passes over parent rows, so children
+  // sit near their parents. Deterministic — no force layout, no jitter.
+  const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
+  const pos = new Map();
+  let rank = nodes.map((n) => n.id);
+  const place = () => {
+    const byLayer = new Map();
+    for (const id of rank) {
+      const l = layer.get(id);
+      let arr = byLayer.get(l);
+      if (!arr) byLayer.set(l, (arr = []));
+      arr.push(id);
+    }
+    pos.clear();
+    let maxL = 0, maxR = 0;
+    for (const l of [...byLayer.keys()].sort((a, b) => a - b)) {
+      byLayer.get(l).forEach((id, i) => pos.set(id, { l, r: i }));
+      maxL = Math.max(maxL, l); maxR = Math.max(maxR, byLayer.get(l).length - 1);
+    }
+    return { maxL, maxR };
+  };
+  let size = place();
+  for (let pass = 0; pass < 2; pass++) {
+    rank = rank.slice().sort((a, b) =>
+      avg(ins.get(a).map((p) => pos.get(p)?.r ?? 0)) - avg(ins.get(b).map((p) => pos.get(p)?.r ?? 0)));
+    size = place();
+  }
+
+  const COL = 230, ROW = 34, PAD = 24;
+  const coord = new Map();
+  for (const [id, p] of pos) coord.set(id, { x: PAD + p.l * COL, y: PAD + p.r * ROW });
+  return { coord, edges, width: PAD * 2 + size.maxL * COL + 174, height: PAD * 2 + size.maxR * ROW + 22 };
+}
+
+function drawGraph() {
+  const svg = $("#gsvg");
+  if (!gModel.nodes.size) { $("#ghint").textContent = "no graph data"; return; }
+  const { coord, edges, width, height } = gLayout();
+  // Initial view: full width, readable scale, anchored top-left where the
+  // plans sit. Fitting the whole viewBox would shrink a tall session graph
+  // into an unreadable sliver — zoom and pan exist for the rest.
+  svg.setAttribute("preserveAspectRatio", "xMinYMin meet");
+  if (gview.w == null) {
+    const wrap = $("#gsvgWrap");
+    const aspect = (wrap.clientHeight || 640) / (wrap.clientWidth || 1140);
+    Object.assign(gview, { w: width, h: width * aspect });
+  }
+  gview.w0 = width;
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  gApplyView();
+  const activeIds = new Set([...gModel.nodes.values()].filter((n) => n.kind === "run" && n.active).map((n) => n.id));
+  const mark = (n) => n.kind === "criterion" ? (n.done ? "✓ " : "· ")
+    : n.kind === "gate" ? (n.verdict === "pass" || n.verdict === "pass-with-concerns" ? "✓ " : "✗ ") : "";
+  const paths = edges.map((e) => {
+    const a = coord.get(e.from), b = coord.get(e.to);
+    const x1 = a.x + 174, y1 = a.y + 11, x2 = b.x, y2 = b.y + 11;
+    const hot = activeIds.has(e.from) || activeIds.has(e.to);
+    return `<path class="gedge${hot ? " hot" : ""}" d="M ${x1} ${y1} C ${x1 + 56} ${y1}, ${x2 - 56} ${y2}, ${x2} ${y2}"/>`;
+  }).join("");
+  const nodesSvg = [...gModel.nodes.values()].map((n) => {
+    const c = coord.get(n.id);
+    const active = n.kind === "run" && n.active;
+    const label = mark(n) + String(n.label ?? n.id).slice(0, 34);
+    return `<g class="gnode${gModel.sel === n.id ? " sel" : ""}" data-gnode="${esc(n.id)}" transform="translate(${c.x},${c.y})">
+      <rect class="body" width="174" height="22" rx="5" style="stroke:${kindColor(n)};stroke-width:${active ? 2 : 1}"></rect>
+      <rect width="4" height="22" rx="2" fill="${kindColor(n)}"></rect>
+      <text x="10" y="15">${esc(label)}</text>
+    </g>`;
+  }).join("");
+  svg.innerHTML = paths + nodesSvg;
+  $("#ghint").classList.add("hidden");
+}
+
+function gApplyView() {
+  $("#gsvg").setAttribute("viewBox", `${gview.x} ${gview.y} ${gview.w} ${gview.h}`);
+}
+
+(() => {
+  const wrap = $("#gsvgWrap");
+  let drag = null;
+  wrap.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, y: e.clientY, vx: gview.x, vy: gview.y }; wrap.style.cursor = "grabbing"; });
+  window.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    const r = $("#gsvg").getBoundingClientRect();
+    gview.x = drag.vx - (e.clientX - drag.x) * (gview.w / r.width);
+    gview.y = drag.vy - (e.clientY - drag.y) * (gview.h / r.height);
+    gApplyView();
+  });
+  window.addEventListener("pointerup", () => { drag = null; wrap.style.cursor = "grab"; });
+  wrap.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const r = $("#gsvg").getBoundingClientRect();
+    const px = gview.x + (e.clientX - r.left) / r.width * gview.w;
+    const py = gview.y + (e.clientY - r.top) / r.height * gview.h;
+    const nw = Math.min(gview.w0 * 1.5, Math.max(400, gview.w * (e.deltaY > 0 ? 1.15 : 1 / 1.15)));
+    const k = nw / gview.w;
+    gview.x = px - (px - gview.x) * k;
+    gview.y = py - (py - gview.y) * k;
+    gview.h *= k; gview.w = nw;
+    gApplyView();
+  }, { passive: false });
+})();
+
+$("#gsvg").addEventListener("click", (e) => {
+  const g = e.target.closest?.("[data-gnode]");
+  if (g) showGDetail(gModel.nodes.get(g.dataset.gnode));
+});
+
+const gLabel = (id) => gModel.nodes.get(id)?.label ?? id;
+
+function showGDetail(n) {
+  if (!n) return;
+  gModel.sel = n.id;
+  $("#gdetail").classList.remove("hidden");
+  $("#gdetailTitle").textContent = `${n.kind} · ${n.id}`;
+  const rows = [];
+  if (n.kind === "plan") rows.push(["status", n.status], ["title", n.title], ["source", n.source]);
+  if (n.kind === "criterion") rows.push(["criterion", `${n.label}${n.done ? " — done" : " — open"}`], ["plan", n.plan], ["text", n.text]);
+  if (n.kind === "phase") rows.push(["plan", n.plan], ["text", n.text]);
+  if (n.kind === "run") {
+    rows.push(["workflow", n.workflow], ["state", n.active ? "active" : n.ok == null ? "ended" : n.ok ? "ok" : "failed"], ["duration", durTxt(n.ms)], ["run dir", n.label]);
+  }
+  if (n.kind === "agent") rows.push(["asks", n.asks], ["tool calls", n.toolCalls], ["run", n.run]);
+  if (n.kind === "artifact") rows.push(["path", n.path], ["bytes", n.bytes], ["versions", n.versions && `v${n.versions}`], ["run", n.run]);
+  if (n.kind === "part") rows.push(["title", n.label]);
+  if (n.kind === "gate") rows.push(["verdict", n.verdict], ["provider", n.provider], ["judged", n.judged], ["at", n.ts]);
+  if (n.kind === "commit") rows.push(["sha", n.sha]);
+  if (n.kind === "recap") rows.push(["file", n.label]);
+  const rel = gModel.edges.filter((e) => e.from === n.id || e.to === n.id)
+    .map((e) => `${e.kind}: ${gLabel(e.from === n.id ? e.to : e.from)}`);
+  const isKitRun = n.kind === "run" && n.id.startsWith("run:") && !n.id.includes("swarm");
+  $("#gdetailBody").innerHTML =
+    `<table>${rows.map(([k, v]) => `<tr><td class="dim" style="width:110px">${esc(k)}</td><td class="mono-list">${esc(v ?? "—")}</td></tr>`).join("")}
+      ${isKitRun ? `<tr><td class="dim">activity</td><td><button class="btn" id="gOpenRun">open run in Activity tab</button></td></tr>` : ""}</table>`
+    + `<div class="hint" style="margin-top:8px">edges (${rel.length})</div><div class="mono-list" style="font-size:11px">${rel.slice(0, 24).map((r) => `<div>${esc(r)}</div>`).join("")}</div>`;
+  const btn = $("#gOpenRun");
+  if (btn) btn.onclick = () => {
+    document.querySelector('nav button[data-tab="activity"]').click();
+    wfSelect(n.id.slice(4));
+  };
+  drawGraph();
+}
+
 /* ── misc ───────────────────────────────────────────────────── */
 function toast(msg, bad) {
   $$(".toast").forEach((t) => t.remove());
@@ -1023,7 +1515,7 @@ function render() {
   renderWorkflows();
 }
 
-if (token) loadAll(); else showGate();
+if (token) { loadAll(); wfStartSse(); } else showGate();
 setTimer();
 </script>
 </body>

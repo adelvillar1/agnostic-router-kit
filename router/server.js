@@ -34,6 +34,9 @@ import { createUsage, sseUsageTap } from "./usage.mjs";
 import { offpeakWeight, computeQuotaState, pickCandidate } from "./quota.mjs";
 import { suggestDelegation } from "./suggest.mjs";
 import { judgeViaFastino } from "./fastino.mjs";
+import { createSwarm } from "./swarm.mjs";
+import { normalizeEvent, isTerminal } from "../lib/workflow/events.mjs";
+import { buildGraph } from "../lib/workflow/graph.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const expand = (p) => (p.startsWith("~") ? path.join(os.homedir(), p.slice(1)) : p);
@@ -109,7 +112,7 @@ function quotaState() {
  * already trusts for this tier.
  */
 function steerSingle(target) {
-  if (!target || target.kind === "mixture" || !Array.isArray(target.candidates) || target.candidates.length < 2) return target;
+  if (!target || target.kind === "mixture" || target.kind === "swarm" || !Array.isArray(target.candidates) || target.candidates.length < 2) return target;
   const qs = quotaState();
   // A provider answering quota/auth failures goes on a runtime cooldown; a
   // cooled-down provider steers as zero headroom so the tier's healthy
@@ -365,9 +368,25 @@ function resolveProfile(profile) {
   return R.workloads?.[profile?.workload] ?? null;
 }
 
+// ── the swarm ─────────────────────────────────────────────────────────────────
+// A `swarm` verdict used to fall back to a mixture run. It now executes the
+// swarm for real: decompose → parallel build → per-part gate → integrate →
+// cold read → deliverable gate, every call metered under `execution: "swarm"`.
+// The accept/revise decisions are the dev-decisions CLI's, not this process's —
+// see router/swarm.mjs for the degradation ladder.
+const swarm = createSwarm({
+  getConfig: () => config,
+  upstream,
+  rewriteBody,
+  thinkingStyleFor,
+  usage,
+  log,
+});
+
 // MoA needs a pure completion: parallel proposals can't be merged when the
 // turn is choosing tool calls mid-loop. Tool-carrying requests fall back to
-// the single strong model.
+// the single strong model. A swarm verdict degrades the same way — its parts
+// are plain completions too.
 function mixtureTarget(signals, baseReason, execution = "mixture", workload = "mixture") {
   if (signals.toolDefs > 0 || signals.hasToolMessages) {
     return {
@@ -375,9 +394,12 @@ function mixtureTarget(signals, baseReason, execution = "mixture", workload = "m
       workload: "hard",
       execution: "single",
       conf: null,
-      reason: `${baseReason}+mixture-skipped-tools`,
+      // Name the execution that was actually skipped: a swarm verdict that
+      // fell back for tools must not be logged as a skipped mixture.
+      reason: `${baseReason}+${execution}-skipped-tools`,
     };
   }
+  if (execution === "swarm") return { kind: "swarm", workload, execution, conf: null, reason: baseReason };
   return { kind: "mixture", workload, execution, conf: null, reason: baseReason };
 }
 
@@ -418,6 +440,13 @@ async function decide(signals) {
   }
   const judged = await runJudge(signals);
   const workload = judged.workload ?? R.defaultWorkload;
+  // A swarm runs inside this process — the harness gets the merged answer with
+  // `x-router-execution: swarm` and must not additionally run a library
+  // workflow for it. The judge answers every question in one call, so its
+  // workflow pick is free; it is simply not a swarm's plan. Reporting it here
+  // would advertise an assignment no one will run.
+  const judgedWorkflow = judged.execution === "swarm" ? null : (judged.workflow ?? null);
+  const judgedFollowUp = judgedWorkflow ? (judged.followUp ?? null) : null;
   workloadCache.set(signals.sessionKey, {
     workload,
     execution: judged.execution,
@@ -429,8 +458,6 @@ async function decide(signals) {
     wfConf: judged.wfConf,
   });
   if (workloadCache.size > 400) workloadCache.delete(workloadCache.keys().next().value);
-  const judgedWorkflow = judged.workflow ?? null;
-  const judgedFollowUp = judged.followUp ?? null;
   if (judged.execution === "mixture" || judged.execution === "swarm") {
     return { ...mixtureTarget(signals, judged.reason, judged.execution, workload), workflow: judgedWorkflow, followUp: judgedFollowUp, conf: judged.conf, wfConf: judged.wfConf ?? null };
   }
@@ -562,7 +589,9 @@ async function aggregate(labeled, signals, body, think = { level: "auto", style:
           labeled.map((l) => `ANSWER ${l.label}:\n${l.text}`).join("\n\n"),
       },
     ],
-  }, (R.mixture?.proposerTimeoutMs ?? 120000), null, think);
+    // A merge over full answers is the longest single generation in the proxy —
+    // give it the swarm's worker patience, not the proposer timeout.
+  }, Math.max(R.mixture?.proposerTimeoutMs ?? 120000, 600000), null, think);
   return merged;
 }
 
@@ -910,6 +939,13 @@ async function forward(res, body, signals) {
     await handleMixture(res, body, signals, target.execution ?? "mixture", thinkLevel);
     return;
   }
+  if (target.kind === "swarm") {
+    // The swarm either writes the response itself or degrades to a single tier
+    // call and returns that target, which falls through to the walk below.
+    const degraded = await swarm.handle(res, body, signals, target, thinkLevel);
+    if (degraded) target = degraded;
+    else return;
+  }
 
   // The tier's candidate chain is the roster's capability-proximity order:
   // steered target first, then the rest. Quota/auth/server failures walk it;
@@ -1076,11 +1112,15 @@ async function handleRoute(res, raw) {
         ...(w.defaults ?? {}),
       },
     }));
+  // A fan-out verdict (mixture or swarm) has no single serving provider until it
+  // picks one — reporting a target there would name a model that never serves.
+  const fan = target.kind === "mixture" || target.kind === "swarm";
+  const execution = target.execution ?? (fan ? target.kind : "single");
   res.writeHead(200, { "Content-Type": "application/json" });
   res.end(JSON.stringify({
     workload: target.workload,
-    execution: target.kind === "mixture" ? (target.execution ?? "mixture") : (target.execution ?? "single"),
-    target: target.kind === "mixture" ? null : { providerId: target.providerId, model: target.model },
+    execution,
+    target: fan ? null : { providerId: target.providerId, model: target.model },
     assignments: plan,
     assignment: plan[0] ?? null,
     conf: target.conf ?? null,
@@ -1091,13 +1131,13 @@ async function handleRoute(res, raw) {
     event: "route-verdict",
     sessionKey: signals.sessionKey,
     workload: target.workload,
-    execution: target.execution ?? "single",
+    execution,
     workflow: plan.map((x) => x.name).join(" -> ") || null,
     reason: target.reason,
   });
   usage.recordDelegation({
     workload: target.workload,
-    execution: target.kind === "mixture" ? (target.execution ?? "mixture") : (target.execution ?? "single"),
+    execution,
     workflows: plan.map((x) => x.name),
   });
   plan.forEach((p, i) =>
@@ -1109,6 +1149,191 @@ async function handleRoute(res, raw) {
   );
 }
 
+
+// ── workflow run watcher (strictly read-only) ────────────────────────────────
+// Tails <kitHome>/workflow-runs/<run>/run.jsonl so the dashboard can watch
+// runs live. The kit CLI is the only writer; this side only reads. Polling
+// (1s tick) rather than fs.watch: tmpfs/rename semantics make watch events
+// unreliable, and the 2s freshness budget only needs a 1s tick.
+const KIT_HOME_DIR = process.env.AGNOSTIC_ROUTER_KIT_HOME
+  ? path.resolve(process.env.AGNOSTIC_ROUTER_KIT_HOME)
+  : path.resolve(__dirname, "..");
+const WORKFLOW_RUNS_DIR = path.join(KIT_HOME_DIR, "workflow-runs");
+const RUN_BUFFER_CAP = 500;
+const wfRuns = new Map(); // runId -> { name, offset, partial, buffer, count, startedAt, lastEventAt, terminal, summary, gnodes }
+const wfSseClients = new Set();
+
+function wfBroadcast(obj) {
+  const line = `data: ${JSON.stringify(obj)}\n\n`;
+  for (const res of [...wfSseClients]) {
+    try {
+      res.write(line);
+    } catch {
+      wfSseClients.delete(res);
+    }
+  }
+}
+
+function wfGraphEmit(runId, st, node) {
+  if (st.gnodes.has(node.id)) return;
+  st.gnodes.add(node.id);
+  wfBroadcast({ type: "graph-node", node });
+}
+
+function wfTick() {
+  let dirs = [];
+  try {
+    dirs = fs.readdirSync(WORKFLOW_RUNS_DIR, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+  } catch {
+    return;
+  }
+  for (const runId of dirs) {
+    let st = wfRuns.get(runId);
+    const jp = path.join(WORKFLOW_RUNS_DIR, runId, "run.jsonl");
+    let size = 0;
+    try {
+      size = fs.statSync(jp).size;
+    } catch {
+      continue;
+    }
+    if (!st) {
+      // lastEventAt starts from the journal's own mtime, not first-sight time:
+      // a run that finished hours ago must show hours of silence, not the age
+      // of the watcher. startedAt parses the runId's embedded clock, which is
+      // UTC (the runId comes from toISOString) — without the Z suffix every
+      // age would be off by the machine's UTC offset.
+      let lastEventAt = Date.now();
+      try {
+        lastEventAt = fs.statSync(jp).mtimeMs;
+      } catch {}
+      const startMatch = /^(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})-(\d{2})-/.exec(runId);
+      const startedAt = startMatch ? Date.parse(`${startMatch[1]}T${startMatch[2]}:${startMatch[3]}:${startMatch[4]}Z`) : Date.now();
+      st = {
+        name: runId.replace(/^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-/, ""),
+        offset: 0,
+        partial: "",
+        buffer: [],
+        count: 0,
+        startedAt: Number.isFinite(startedAt) ? startedAt : Date.now(),
+        lastEventAt,
+        terminal: false,
+        summary: null,
+        gnodes: new Set(),
+      };
+      wfRuns.set(runId, st);
+    }
+    if (size < st.offset) {
+      st.offset = 0; // truncated or recreated
+      st.partial = "";
+    }
+    if (size === st.offset) {
+      wfMaybeSummary(runId, st);
+      continue;
+    }
+    let text = "";
+    try {
+      const fd = fs.openSync(jp, "r");
+      const buf = Buffer.alloc(size - st.offset);
+      fs.readSync(fd, buf, 0, buf.length, st.offset);
+      fs.closeSync(fd);
+      st.offset = size;
+      text = buf.toString("utf8");
+    } catch {
+      continue;
+    }
+    const lines = (st.partial + text).split("\n");
+    st.partial = lines.pop() ?? "";
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const ev = normalizeEvent(line, { runId });
+      if (!ev) continue;
+      if (ev.kind === "run-start" && ev.name) st.name = ev.name;
+      st.buffer.push(ev);
+      if (st.buffer.length > RUN_BUFFER_CAP) st.buffer.shift();
+      st.count++;
+      // The event's own offset clock, not wall-clock: replaying a finished
+      // journal at boot must land lastEventAt hours ago, not at boot time —
+      // otherwise every finished run reads as "silent since the router
+      // started" and the stall detector lies.
+      st.lastEventAt = Number.isFinite(ev.t) && Number.isFinite(st.startedAt)
+        ? st.startedAt + ev.t
+        : Date.now();
+      if (isTerminal(ev.kind)) st.terminal = true;
+      wfBroadcast({ type: "event", runId, name: st.name, event: ev });
+      // Live graph deltas: run → agents → artifacts, the journal-derivable spine.
+      if (ev.kind === "run-start") {
+        wfGraphEmit(runId, st, { id: `run:${runId}`, kind: "run", label: st.name, workflow: st.name, active: true });
+      } else if (ev.kind === "agent" && ev.actor) {
+        wfGraphEmit(runId, st, { id: `agent:${runId}:${ev.actor}`, kind: "agent", label: ev.actor, asks: 1, toolCalls: 0 });
+        wfBroadcast({ type: "graph-edge", edge: { from: `run:${runId}`, to: `agent:${runId}:${ev.actor}`, kind: "spawns" } });
+      } else if (ev.kind === "artifact" && ev.artifactId) {
+        wfGraphEmit(runId, st, { id: `artifact:${runId}:${ev.artifactId}`, kind: "artifact", label: ev.artifactId, bytes: ev.bytes, path: ev.path });
+        wfBroadcast({ type: "graph-edge", edge: { from: `run:${runId}`, to: `artifact:${runId}:${ev.artifactId}`, kind: "produces" } });
+      }
+    }
+    wfMaybeSummary(runId, st);
+  }
+}
+
+function wfMaybeSummary(runId, st) {
+  if (st.summary || !st.terminal) return;
+  try {
+    st.summary = JSON.parse(fs.readFileSync(path.join(WORKFLOW_RUNS_DIR, runId, "summary.json"), "utf8"));
+    wfBroadcast({ type: "summary", runId, summary: st.summary });
+  } catch {}
+}
+
+function wfRunsSnapshot() {
+  const now = Date.now();
+  const out = [];
+  for (const [runId, st] of wfRuns) {
+    out.push({
+      runId,
+      name: st.name,
+      active: !st.terminal || !st.summary,
+      lastEventAgeMs: now - st.lastEventAt,
+      events: st.count,
+      startedAt: st.startedAt,
+      summary: st.summary,
+    });
+  }
+  out.sort((a, b) => b.startedAt - a.startedAt);
+  return out.slice(0, 50);
+}
+
+let wfGraphMemo = null;
+function wfGraphCached() {
+  const now = Date.now();
+  if (wfGraphMemo && now - wfGraphMemo.at < 5000) return wfGraphMemo.graph;
+  const graph = buildGraph({
+    kitHome: KIT_HOME_DIR,
+    repoRoot: process.env.AGNOSTIC_ROUTER_KIT_REPO_ROOT ?? path.resolve(__dirname, ".."),
+  });
+  wfGraphMemo = { at: now, graph };
+  return graph;
+}
+
+function wfStart() {
+  wfTick();
+  setInterval(wfTick, 1000).unref();
+  // The heartbeat is what makes a stall visible: every client hears per-run
+  // last-event age every 5s whether or not anything happened.
+  setInterval(() => {
+    const line = `data: ${JSON.stringify({
+      type: "heartbeat",
+      runs: wfRunsSnapshot().map((r) => ({ runId: r.runId, lastEventAgeMs: r.lastEventAgeMs, active: r.active })),
+    })}\n\n`;
+    for (const res of [...wfSseClients]) {
+      try {
+        res.write(line);
+      } catch {
+        wfSseClients.delete(res);
+      }
+    }
+  }, 5000).unref();
+}
+
+wfStart();
 
 const server = http.createServer((req, res) => {
   const auth = req.headers.authorization ?? "";
@@ -1141,6 +1366,26 @@ const server = http.createServer((req, res) => {
         res.writeHead(404, { "Content-Type": "text/plain" });
         res.end("dashboard.html missing — run `kit apply` to install the router runtime");
       }
+      return;
+    }
+    // Workflow run stream. EventSource cannot set an Authorization header, so
+    // the local token may arrive as ?token= — same secret, same gate, and the
+    // surface is 127.0.0.1-only either way.
+    if (req.method === "GET" && req.url.startsWith("/api/workflow-events")) {
+      const u = new URL(req.url, "http://localhost");
+      if (u.searchParams.get("token") !== config.localToken) {
+        res.writeHead(401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: { message: "router: bad local token" } }));
+        return;
+      }
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      });
+      res.write(`data: ${JSON.stringify({ type: "hello", runs: wfRunsSnapshot() })}\n\n`);
+      wfSseClients.add(res);
+      req.on("close", () => wfSseClients.delete(res));
       return;
     }
     if (auth !== `Bearer ${config.localToken}`) {
@@ -1368,6 +1613,28 @@ const server = http.createServer((req, res) => {
         }
         const result = await applyRoster(candidate);
         jsonOut(result.ok ? 200 : 409, { ok: result.ok, output: result.output, restartRecommended: result.restartRecommended });
+        return;
+      }
+      if (req.method === "GET" && req.url === "/api/workflow-runs") {
+        jsonOut(200, { ok: true, runs: wfRunsSnapshot() });
+        return;
+      }
+      if (req.method === "GET" && req.url.startsWith("/api/workflow-run/")) {
+        const runId = decodeURIComponent(req.url.slice("/api/workflow-run/".length).split("?")[0]);
+        const st = wfRuns.get(runId);
+        if (!st) {
+          jsonOut(404, { ok: false, error: `unknown run: ${runId}` });
+          return;
+        }
+        jsonOut(200, { ok: true, runId, name: st.name, active: !st.terminal || !st.summary, events: st.buffer, summary: st.summary });
+        return;
+      }
+      if (req.method === "GET" && req.url === "/api/workflow-graph") {
+        try {
+          jsonOut(200, wfGraphCached());
+        } catch (e) {
+          jsonOut(500, { ok: false, error: String(e?.message ?? e).slice(0, 200) });
+        }
         return;
       }
       jsonOut(404, { ok: false, error: "router: unknown api path" });

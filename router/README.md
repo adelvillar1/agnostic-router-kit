@@ -24,7 +24,7 @@ Per request, in order:
    | Model | Pins to | Target | Plan |
    |---|---|---|---|
    | `quick` | quick | qwen3.8-flash | Token plan |
-   | `code` | standard_code | step-3.7-flash | Step plan |
+   | `code` | standard_code | qwen3.8-flash | Token plan |
    | `hard` | hard | GLM-5.3-Flash | Z.AI Coding Plan |
    | `prose` | prose | mimo-v2.6-flash | MiMo plan |
    | `long-context` | deep_context | step-5-preview | Step plan |
@@ -48,19 +48,78 @@ Per request, in order:
 ### Topology: who decides swarm vs single
 
 The judgment answers TWO questions per task: the workload (which model) and
-the **execution style** — `single` (one focused call/worker), `mixture`
-(parallel answers + judge), or `swarm` (decomposed multi-agent work with
-critique rounds). Topology is a routing decision, not a hardcoded one.
-Hardness alone does not trigger MoA: a single hard decision stays `single`.
+the **execution style** — `single` (one focused call), `mixture` (parallel
+proposals + judgment), or `swarm` (decomposed multi-agent work with review).
+Topology is a routing decision, not a hardcoded one. Hardness alone does not
+trigger MoA: a single hard decision stays `single`. Nor does it trigger a
+swarm: only genuine decomposition does.
 
 Consumers:
-- The **chat path** acts on it: mixture/swarm verdicts run MoA and return the
-  verdict in the `x-router-execution` / `x-router-workload` response headers
-  (a swarm verdict at the chat layer runs MoA as its closest available
-  approximation and advertises the recommendation for orchestration).
+- The **chat path** executes it: a `mixture` verdict fans out to the proposers
+  and integrates when the judge says merging adds value; a `swarm` verdict runs
+  the proxy-internal swarm (`router/swarm.mjs` — decompose → parallel build →
+  per-part gate → integrate → cold read → deliverable gate) and returns the
+  merged answer. Both set `x-router-execution` / `x-router-workload`; the swarm
+  streams by chunking when the client asked for a stream.
 - **`POST /route`** ({task} or {messages}) returns the verdict alone —
   `{workload, execution, target, conf, reason}` — for delegation-time
-  decisions (launch a multi-agent workflow vs a normal call).
+  decisions. `target` is `null` for both fan-out verdicts, because neither has
+  a serving model until it picks one.
+
+### The swarm, and how it degrades
+
+`router/swarm.mjs` owns the whole pipeline and meters every model call under
+`execution: "swarm"` with a `swarm:<stage>` reason, so the ledger shows what
+the swarm spent per stage rather than one lumped total.
+
+| Stage | Who runs it |
+|---|---|
+| decompose | the judged tier's target — one model, seen by the whole swarm |
+| build | the worker pool, in parallel, one part each |
+| per-part acceptance | `dev-decisions evidence-gate` — a subprocess, not a model call |
+| integrate | `routing.swarm.integrator`, else `mixture.aggregator`, else worker 1 |
+| cold read | worker 1, blind to how the answer was built |
+| deliverable gate | `dev-decisions evidence-gate` again, one bounded repair round |
+
+Degradations are all metered and logged, never silent:
+
+- A turn carrying tool definitions or tool messages — the parts are plain
+  completions, so the swarm cannot run mid-loop. One tier call, reason
+  `swarm:skipped-tools`.
+- Fewer than 2 decomposition parts, or a decomposition that fails — one tier
+  call, `swarm:no-decomposition` / `swarm:decompose-failed`.
+- Fewer than 60% of the parts building — one tier call,
+  `swarm:build-degraded`. A partial swarm would quietly answer a fraction of
+  the question, which is worse than one strong call that covers it.
+- All parts dropped by their gate — one tier call, `swarm:all-parts-dropped`.
+- The gate CLI missing or erroring — the deterministic fallback runs (accept the
+  part, note `gate unavailable` in the journal). An unavailable gate must not
+  hang a request, and it must not silently pass everything either.
+
+The accept/revise decisions are **not** inline model calls. They run the
+`dev-decisions` CLI's `evidence-gate`, which judges each acceptance criterion
+against `== C<i> ==`-tagged evidence through its own classifier stack and
+appends the row to the shared calibration store in its own schema. One bounded
+revise round per gate; a part that still fails is dropped and reported, not
+retried forever. Because the rows land in the shared store, these gates can be
+calibrated later — a threshold set here could not.
+
+The worker pool defaults to the judged tier's target followed by the mixture
+proposers (different plan pools, deduped, capped at 8). A roster `swarm` block
+overrides it — useful when one upstream is demonstrably bad at long-form
+generation while fine at short ones, and you want the reliable workers taking
+the first parts:
+
+```json
+"swarm": {
+  "workers": ["stepfun/step-5-preview", "xiaomi-mimo/mimo-v2.6-pro", "zai-coding-plan/GLM-5.3-Flash"],
+  "integrator": "stepfun/step-5-preview"
+}
+```
+
+`kit apply` validates the targets and renders them into `routing.swarm` like
+every other roster target; unresolvable ones are dropped with a remap note, and
+with no block at all the pool falls back to tier + mixture.
 
 ### Workflow assignment (and sequencing)
 
@@ -79,15 +138,15 @@ approximation; `execution` governs what the chat path itself does. Note
 gate on `assignments` being non-empty, not on the number alone.
 
 Confidence gates are per-question (`routing.minConfidence` for the 5-way
-workload pick, `routing.workflowMinConfidence` default 0.4 for the 15-way
+workload pick, `routing.workflowMinConfidence` default 0.4 for the 10-way
 workflow pick — different option spaces, different chance baselines).
 Registered shapes:
 
-swarm, review-sweep, bug-hunt, migration, research-report, deep-dive,
+review-sweep, bug-hunt, migration, research-report, deep-dive,
 coverage-push, content-production, decision-memo, postmortem,
-adversarial-solve, design-review, ui-implementation-review,
-spec-compliance-review, ocr-code-review. Tuning a mis-pick is a one-line
-shape edit in the roster.
+adversarial-solve — the registry is built from the kit's `workflows/`
+directory on every `kit apply`, so the routable set is exactly the shipped
+set. Tuning a mis-pick is a one-line shape edit in the roster.
 
 ### Mixture of Agents (`mixture` / `auto` + hard)
 
