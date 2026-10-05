@@ -180,6 +180,42 @@ single file, one decision — stated fully, because the child sees none of the
 parent's context. Handing over the whole task is not delegation, it is a
 context split with extra steps.
 
+### Commands that outlive a tool round
+
+`run_command` is synchronous because most commands are, and its five-minute
+kill is the right default for those. A ten-minute test suite is the case that
+shape cannot serve: the round dies while the work is still running, and the
+agent's only evidence is a timeout. `start_command`,
+`poll_command` and `stop_command` are the same command with the round handed
+back:
+
+- `start_command` returns a handle immediately. It runs the same gate
+  `run_command` does — the executable allowlist, the capability the command is
+  classified under, and the install policy for a dependency-changing subject —
+  because backgrounding one is not a reason to forget why the synchronous path
+  would have refused it.
+- `poll_command({handle, offset})` reads the output printed since that offset.
+  Every call returns the offset to read from next, so polling is a stream
+  rather than a re-read: an agent that polls a ten-minute suite reads what is
+  new each time instead of re-reading everything. A command held back by the
+  one-poll byte cap says so (`truncated`) and the offset moves with the
+  truncation, so nothing is skipped. When `running` turns false, `exitCode` is
+  how it finished, and a null one with a `signal` means it was killed.
+- `stop_command({handle})` ends one early, and is idempotent — stopping a
+  command that already exited reports that, with its exit code, rather than
+  failing.
+
+Every background command has a lifetime cap (15 minutes, the ceiling for any
+process the run starts) and a dev server still defaults to its own tighter
+five. Stop is a request, not an event: the exit code belongs to the poll that
+follows it, because a SIGTERM'd child has no exit code to report and the
+signal is the reason. The journal carries all of it as `service` events —
+`start`, `exit`, `stop`, `lifetime-expired` — with the command, the lifetime
+and the exit code or signal.
+
+The plane gets the same three as `world.command.{start,poll,stop}`, for a
+workflow that needs one long-running command on its own account.
+
 ### What agents cannot do
 
 - **Reach outside the workspace.** Every file tool resolves against the run's
