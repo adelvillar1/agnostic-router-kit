@@ -15,11 +15,13 @@
     "./harness.mjs": "./harness.mjs",
     "./meta.mjs": "./meta.mjs",
     "./schema.mjs": "./schema.mjs",
+    "./runstate.mjs": "./runstate.mjs",
+    "./transport.mjs": "./transport.mjs",
     "./services.mjs": "./services.mjs",
     "./tools.mjs": "./tools.mjs"
   },
   "scripts": {
-    "check": "node --check checkpoint.mjs && node --check coerce.mjs && node --check engine.mjs && node --check events.mjs && node --check graph.mjs && node --check harness.mjs && node --check meta.mjs && node --check schema.mjs && node --check services.mjs && node --check tools.mjs"
+    "check": "node --check checkpoint.mjs && node --check coerce.mjs && node --check engine.mjs && node --check events.mjs && node --check graph.mjs && node --check harness.mjs && node --check meta.mjs && node --check runstate.mjs && node --check schema.mjs && node --check services.mjs && node --check tools.mjs && node --check transport.mjs"
   },
   "keywords": [
     "workflow",
