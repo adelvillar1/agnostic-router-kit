@@ -8,6 +8,7 @@
   },
   "exports": {
     "./checkpoint.mjs": "./checkpoint.mjs",
+    "./coerce.mjs": "./coerce.mjs",
     "./engine.mjs": "./engine.mjs",
     "./events.mjs": "./events.mjs",
     "./graph.mjs": "./graph.mjs",
@@ -18,7 +19,7 @@
     "./tools.mjs": "./tools.mjs"
   },
   "scripts": {
-    "check": "node --check checkpoint.mjs && node --check engine.mjs && node --check events.mjs && node --check graph.mjs && node --check harness.mjs && node --check meta.mjs && node --check schema.mjs && node --check services.mjs && node --check tools.mjs"
+    "check": "node --check checkpoint.mjs && node --check coerce.mjs && node --check engine.mjs && node --check events.mjs && node --check graph.mjs && node --check harness.mjs && node --check meta.mjs && node --check schema.mjs && node --check services.mjs && node --check tools.mjs"
   },
   "keywords": [
     "workflow",
