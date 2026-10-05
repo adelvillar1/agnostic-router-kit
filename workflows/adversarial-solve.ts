@@ -135,6 +135,14 @@ const task = String(args.task ?? "").trim() || "Solve the problem.";
  */
 const partLabel = (p: Part): string => String(p?.title ?? "(part with no title)").slice(0, 60);
 
+/**
+ * A part's identity in the run's fact store. The same string labels the facts
+ * recorded about a part and scopes the builder dispatched to it, so the scope
+ * is not a second name to keep in sync: the tool's own check is `asked ===
+ * mine`, and this function is the one place both sides get it from.
+ */
+const partScope = (ns: string, p: Part): string => `${ns}${partLabel(p)}`;
+
 // ── the dispatch gate: the plane's, not this workflow's ─────────────────────
 // validateContract (deterministic: file collisions, self-containment,
 // dependency phrases) and judgeContract (sys1, two heads) live in
@@ -229,6 +237,13 @@ const strategy = await strategist.ask<StrategyList>(
 );
 log(`stack pinned: ${strategy.stack}`);
 log(`${strategy.approaches.length} champions are competing independently`);
+// The run's fact store, as the coordination layer's record of what it decided
+// and measured. The brief still carries all of this by push — a fact known at
+// dispatch belongs in the brief, and recall is for what comes after — but the
+// journal of `remember` lines is what makes the run's own record auditable.
+world.remember({ kind: "task", fact: task });
+world.remember({ kind: "stack", fact: String(strategy.stack ?? "") });
+world.remember({ kind: "decision", fact: `${strategy.approaches.length} champions competing independently` });
 
 phase("Build each solution in parallel, competing independently");
 // ── the harness block: measured and rendered by the plane ───────────────────
@@ -240,6 +255,7 @@ phase("Build each solution in parallel, competing independently");
 // nothing here assembles a brief by hand.
 const env = await measureEnvironment((cmd: string, args: string[]) => world.run(cmd, args));
 log(`harness contract measured: ${env.facts.join(" · ")}`);
+world.remember({ kind: "environment", fact: env.facts.join(" · ") });
 
 const solutions = await Promise.all(
   strategy.approaches.map(async (a) => {
@@ -293,6 +309,7 @@ const solutions = await Promise.all(
           const g = await judgeContract(p, task, sys1.judge);
           const v = gateVerdict(g);
           log(`gate "${partLabel(p)}" → ${v}`);
+          world.remember({ kind: "verdict", part: partScope(ns, p), fact: v });
           if (gateNeedsFixup(g)) problems.push(`"${p.title}": ${v}`);
         }
         if (!problems.length) return { parts: current, notes };
@@ -337,7 +354,13 @@ const solutions = await Promise.all(
           acceptance: p.acceptance,
           provides: p.provides ? `as declared for this part: ${p.provides}` : undefined,
         },
+        // This builder's window on the run's fact store: the public facts, plus
+        // the facts about this part alone. Naming a sibling part is refused, so
+        // the isolation the parts are dispatched under is the isolation they
+        // keep while working.
+        scope: { part: partScope(ns, p) },
       });
+      world.remember({ kind: "status", part: partScope(ns, p), fact: "dispatched" });
       const brief = (part: Part): string =>
         `${harness}\n\n` +
         `Problem: ${task}\n\nChampion's approach: ${a.name} — ${a.rationale}\n` +
@@ -399,7 +422,9 @@ const solutions = await Promise.all(
                 extra:
                   "A previous builder attempt on the parent part hit the tool-round cap; its partial work may already exist in the owned paths.",
               },
+              scope: { part: partScope(ns, sp) },
             });
+            world.remember({ kind: "status", part: partScope(ns, sp), fact: "dispatched" });
             return { sp, sub };
           })
         );
@@ -416,6 +441,16 @@ const solutions = await Promise.all(
       }
     };
     const parts = await Promise.all(dispatch.map((p) => buildPart(p)));
+    // The store records that each part came back and how — including the parts
+    // that did not check out, so the run's own record of itself is not
+    // flattering. The champion's brief already carries all of this by push.
+    for (const [i, p] of dispatch.entries()) {
+      world.remember({
+        kind: "status",
+        part: partScope(ns, p),
+        fact: parts[i].unverified ? "built, but its own report did not check out" : "built",
+      });
+    }
     return champion.ask<Solution>(
       `Problem: ${task}\n\nYour approach: ${a.name} — ${a.rationale}\n` +
         `Stack: ${strategy.stack}\n\n` +
@@ -449,6 +484,7 @@ const judgment = await judge.ask<Judgment>(
   `Problem: ${task}\n\nCompeting solutions:\n${JSON.stringify(solutions)}\n\n` +
     "Return winner, why, weaknesses, and adopt."
 );
+world.remember({ kind: "decision", fact: `the head-to-head judge picked: ${String(judgment.winner ?? "")}` });
 
 const findings: Finding[] = [];
 for (const w of judgment.weaknesses) {

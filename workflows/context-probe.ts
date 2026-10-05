@@ -1,5 +1,5 @@
 /* workflow
-description: "Probe: context services — a part's result is checked against the contract it was dispatched with, in code, before its champion is told it was built."
+description: "Probe: context services — a part's result is checked against the contract it was dispatched with, in code, before its champion is told it was built; and the run's fact store is read back scoped, capped, and journaled."
 whenToUse: Probe only — never a real task. Exercises the plane's result-shaping check in
   both directions: a sound result passes, and every defect class the check exists to
   catch is named. Each trial states what should happen, so a check that stopped
@@ -130,17 +130,113 @@ trials.push(
   )
 );
 
-const unexpected = trials.filter((t) => t.verdict === "UNEXPECTED");
+// ── the run's fact store ────────────────────────────────────────────────────
+// The pull half of the context services, on the same no-agent-call terms: the
+// store is code, so every claim it makes is a trial like the ones above.
+// `recallAs(part)` is the exact closure the engine hands the agent scoped to
+// `part` — the probe calls it as the plane that dispatched them, which is the
+// only way to show the boundary holding without waiting for a model to test it.
+
+// The public facts a run records before anything is dispatched.
+world.remember({ kind: "task", fact: "counts tokens in a file" });
+world.remember({ kind: "stack", fact: "JavaScript on Node 24, node:test, zero npm deps" });
+
+// A remember that returns ok is the happy path; anything else returns the
+// plane's own reason. `trial` counts problems, so a reason is one problem —
+// returning prose here would make the journal note read "118: r".
+const failedRemember = (kind: string, fact: string): string[] => {
+  const r = world.remember({ kind, fact });
+  return r.ok ? [] : [`remember accepted it: ${String((r as { reason?: string }).reason ?? r)}`];
+};
+
+trials.push(trial("an unknown fact kind is refused by name", "defective", () => failedRemember("poetry", "a limerick")));
+trials.push(trial("a fact with no text is refused", "defective", () => failedRemember("task", "   ")));
+trials.push(
+  trial(
+    "every declared kind is stored",
+    "clean",
+    () =>
+      ["task", "stack", "environment", "decision", "verdict", "status", "phase"]
+        .flatMap((k) => failedRemember(k, `a ${k} fact`))
+        .join("; ")
+  )
+);
+
+world.remember({ kind: "verdict", part: "ns/A", fact: "blocked: two parts claim the same file" });
+world.remember({ kind: "status", part: "ns/A", fact: "built" });
+world.remember({ kind: "verdict", part: "ns/B", fact: "clean" });
+
+trials.push(
+  trial("the plane reads every part's facts", "clean", () => {
+    const all = world.facts();
+    const problems = [];
+    if (!all.ok || !all.text.includes("clean") || !all.text.includes("blocked: two parts")) problems.push(`plane saw: ${all.text}`);
+    return problems;
+  })
+);
+trials.push(
+  trial("the plane narrows its own read to one part", "clean", () => {
+    const a = world.facts({ part: "ns/A" });
+    const problems = [];
+    if (!a.ok || !a.text.includes("blocked: two parts") || a.text.includes("clean")) problems.push(`plane saw: ${a.text}`);
+    return problems;
+  })
+);
+
+// the agent-side boundary, which is the reason the store can be on the default
+// agent surface at all
+trials.push(
+  trial("a scoped agent reads the public facts and its own", "clean", () => {
+    const seen = world.recallAs("ns/A");
+    const problems = [];
+    if (!seen.includes("counts tokens") || !seen.includes("blocked: two parts")) problems.push(`agent saw: ${seen}`);
+    return problems;
+  })
+);
+trials.push(
+  trial("a scope-free agent reads the public facts only", "clean", () => {
+    const seen = world.recallAs(null);
+    const problems = [];
+    if (!seen.includes("counts tokens")) problems.push(`agent saw no public fact: ${seen}`);
+    if (seen.includes("clean") || seen.includes("blocked: two parts")) problems.push(`agent saw a part's fact: ${seen}`);
+    return problems;
+  })
+);
+trials.push(
+  trial("naming a sibling part is refused, by name", "defective", () => {
+    world.recallAs("ns/A", { part: "ns/B" });
+    return ["the recall returned instead of refusing"];
+  })
+);
+
+// the caps: a reader told nothing about what it did not get will ask again
+for (let i = 0; i < 60; i++) world.remember({ kind: "status", part: "ns/Z", fact: `z${i} ${"x".repeat(80)}` });
+trials.push(
+  trial("the fact-count cap says what it held back", "clean", () => {
+    const seen = world.recallAs("ns/Z");
+    return /over the 40-fact cap/.test(seen) ? [] : [`no truncation line: ${seen.slice(-200)}`];
+  })
+);
+world.remember({ kind: "decision", fact: "y".repeat(9_000) });
+trials.push(
+  trial("the byte cap says what it held back", "clean", () => {
+    const seen = world.recallAs(null, { kind: "decision" });
+    return /over the 8192-byte cap/.test(seen) ? [] : [`no truncation line: ${seen.slice(-200)}`];
+  })
+);
+
+const allUnexpected = trials.filter((t) => t.verdict === "UNEXPECTED");
 
 return {
-  conclusion: `context probe: ${trials.length - unexpected.length}/${trials.length} results checked exactly as the plane claims`,
+  conclusion: `context probe: ${allUnexpected.length ? `${trials.length - allUnexpected.length}/${trials.length}` : `${trials.length}/${trials.length}`} trials checked exactly as the plane claims`,
   findings: [],
   verified: [
     ...trials.map((t) => `${t.verdict === "AS-EXPECTED" ? "ok" : "UNEXPECTED"}: ${t.label} — ${t.note}`),
-    "the check needs no agent call: it is deterministic code over the result and the contract",
+    "no trial needed a model call: result-shaping and the fact store are both deterministic code",
   ],
   notCovered: [
     "the re-ask path in adversarial-solve's buildPart — that takes a live builder, so it shows in a real adversarial-solve run",
     "a part whose files exist but whose provides disagrees with the declared interface — a semantic comparison the plane leaves to the champion",
+    "a model choosing to call recall at all — the store makes the read available and bounded; whether an agent wants it is the run's business",
   ],
 };

@@ -92,6 +92,27 @@ The gate rows also land in the shared dev-decisions store with
 machine's other gates feed, which is what lets a `disposition` later grade
 these gates like any other.
 
+### The swarm's fact store
+
+Each request gets one fact store — the same one the workflow runtime uses
+(`lib/workflow/harness.mjs`) — and it records what the swarm decided: the
+request, the decomposition, each part's atomicity verdict, each part's status
+(dispatched, accepted, dropped), and the deliverable verdict. It lands in the
+router log as `run-fact` lines alongside the `swarm` ones:
+
+```json
+{"event":"run-fact","op":"remember","factId":"f3","kind":"verdict","part":"p2","chars":31,"text":"atomicity: atomic (0.91)"}
+{"event":"run-fact","op":"remember","factId":"f8","kind":"status","part":"p2","chars":9,"text":"dispatched"}
+```
+
+The swarm's workers are bare completions with no tool loop, so they cannot
+*recall* — what a worker knows is what the swarm pushes into its prompt. Each
+worker receives the facts about its own part (its atomicity verdict, its
+dispatch status) appended to its build brief. No worker sees another's. That is
+the same push rule the workflows follow, applied where the pull half does not
+exist: one store decides what a worker is told, rather than each call site
+assembling its own context.
+
 ## Degradations
 
 All metered, all logged, none silent. A swarm that cannot run as a swarm falls

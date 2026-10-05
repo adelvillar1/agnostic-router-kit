@@ -27,7 +27,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { judgeContract, gateNeedsFixup, makeSys1Classifier, makeJudgingClassifier } from "../lib/workflow/harness.mjs";
+import { judgeContract, gateNeedsFixup, makeSys1Classifier, makeJudgingClassifier, makeRunMemory } from "../lib/workflow/harness.mjs";
 
 const decoder = new TextDecoder();
 
@@ -95,6 +95,18 @@ export function createSwarm(deps) {
   const { getConfig, upstream, rewriteBody, thinkingStyleFor, usage, log } = deps;
 
   const R = () => getConfig().routing ?? {};
+
+  /**
+   * The swarm's own record of the request it is answering — the same store the
+   * workflows use (lib/workflow/harness.mjs), one per request, journalled
+   * through the router's own log rather than run-start/run-done JSONL. A swarm
+   * worker is a bare completion with no tool loop, so the pull half (an agent's
+   * recall) does not apply to it: what a worker knows is what the swarm pushes
+   * into its prompt. The store decides what that is — one place, so a fact is
+   * either in every worker's context of its own part or in none of them.
+   */
+  const memoryFor = (requested) =>
+    makeRunMemory((row) => log({ event: "run-fact", requested, op: row.op, factId: row.factId, kind: row.factKind, part: row.part, chars: row.chars, text: row.text }));
 
   /**
    * One metered completion, always requested as a stream. The stream is not a
@@ -286,10 +298,15 @@ export function createSwarm(deps) {
   // Each part starts on its round-robin worker but carries the whole pool as
   // its reassignment chain — a worker that times out or drops moves the part
   // to the next comparable model instead of costing the swarm a part.
-  async function build(signals, parts, pool, requested, think) {
+  async function build(signals, parts, pool, requested, think, memory = null) {
     return Promise.all(
       parts.map((part, i) => {
         const worker = pool[i % pool.length];
+        // What the swarm already knows about THIS part, pushed rather than
+        // recalled: a swarm worker is a bare completion with no tool loop, so
+        // it cannot pull, and the facts are the plane's decision to make — not
+        // something the worker should have to ask for.
+        const mine = memory ? memory.facts({ part: part.id }).text : "";
         return completeChain([worker, ...pool], [
           {
             role: "system",
@@ -303,7 +320,8 @@ export function createSwarm(deps) {
             content:
               `FULL REQUEST (for context):\n${signals.lastUser}\n\n` +
               `YOUR PART (${part.title}):\n${part.instruction}\n\n` +
-              `Acceptance criteria for your part:\n${(part.acceptance.length ? part.acceptance : ["the part is complete and directly usable"]).map((a) => `- ${a}`).join("\n")}`,
+              `Acceptance criteria for your part:\n${(part.acceptance.length ? part.acceptance : ["the part is complete and directly usable"]).map((a) => `- ${a}`).join("\n")}` +
+              (mine ? `\n\nWhat the swarm already decided about your part:\n${mine}` : ""),
           },
         ], { purpose: `build:${part.id}`, requested, think });
       })
@@ -502,15 +520,19 @@ export function createSwarm(deps) {
     }
 
     const t0 = Date.now();
+    const memory = memoryFor(requested);
+    memory.remember({ kind: "task", fact: String(signals.lastUser ?? "").slice(0, 2000) });
     log({ event: "swarm", stage: "start", sessionKey: signals.sessionKey, requested, workload });
 
     const pool = workerPool(target);
     let { parts, degraded } = await decompose(signals, target, requested, think);
     if (degraded) {
       log({ event: "swarm", stage: "decompose", degraded, requested });
+      memory.remember({ kind: "status", fact: `decomposition degraded: ${degraded}` });
       return degrade(R().workloads?.[workload] ?? pool[0], degraded, requested, workload);
     }
     log({ event: "swarm", stage: "decompose", parts: parts.length, titles: parts.map((p) => p.title), requested });
+    memory.remember({ kind: "decision", fact: `decomposed into ${parts.length} parts: ${parts.map((p) => p.title).join("; ")}` });
 
     // ── atomicity gate: the plane's (lib/workflow/harness.mjs), shared with the
     // workflows' dispatch gate — same head shapes, same thresholds, one
@@ -537,10 +559,12 @@ export function createSwarm(deps) {
       const v = await atomicityVerdict(part);
       if (!v.ok) {
         log({ event: "swarm-atomicity", label: String(part.title ?? "").slice(0, 80), outcome: "unavailable", reason: v.reason, requested });
+        memory.remember({ kind: "verdict", part: part.id, fact: `atomicity: unavailable (${v.reason}) — dispatched as written` });
         atomicDispatch.push(part);
         continue;
       }
       log({ event: "swarm-atomicity", label: String(part.title ?? "").slice(0, 80), verdict: v.atomic ? "atomic" : "multi-concern", conf: v.confidence, provider: v.provider, source: v.source, requested });
+      memory.remember({ kind: "verdict", part: part.id, fact: `atomicity: ${v.atomic ? "atomic" : "multi-concern"} (${v.confidence ?? "?"})` });
       if (!gateNeedsFixup(v)) {
         atomicDispatch.push(part);
         continue;
@@ -550,16 +574,22 @@ export function createSwarm(deps) {
         for (const sp of sub.parts) {
           const v2 = await atomicityVerdict(sp);
           log({ event: "swarm-atomicity", label: String(sp.title ?? "").slice(0, 80), verdict: v2.ok ? (v2.atomic ? "atomic" : "multi-concern") : "unavailable", depth: 2, requested });
+          memory.remember({ kind: "verdict", part: sp.id, fact: `atomicity: ${v2.ok ? (v2.atomic ? "atomic" : "multi-concern") : "unavailable"} at depth 2 (split from "${part.title}")` });
           atomicDispatch.push(sp);
         }
       } else {
         log({ event: "swarm-atomicity", label: String(part.title ?? "").slice(0, 80), outcome: "split-failed", degraded: sub.degraded, requested });
+        memory.remember({ kind: "status", part: part.id, fact: `multi-concern and its split failed (${sub.degraded ?? "no fallback"}) — dispatched as written` });
         atomicDispatch.push(part);
       }
     }
     parts = atomicDispatch;
 
-    const built = await build(signals, parts, pool, requested, think);
+    // Each part's own facts are recorded before it builds, so the worker reads
+    // the verdict about its atomicity rather than the plane deciding in
+    // silence.
+    for (const p of parts) memory.remember({ kind: "status", part: p.id, fact: "dispatched" });
+    const built = await build(signals, parts, pool, requested, think, memory);
     const builtOk = built.filter(Boolean).length;
     // A partial swarm is worse than no swarm: integrating 1 of 4 parts answers
     // a quarter of the question and says nothing about it. Fewer than 60% of
@@ -572,6 +602,9 @@ export function createSwarm(deps) {
     log({ event: "swarm", stage: "build", built: builtOk, of: parts.length });
 
     const { accepted, report } = await gateParts(signals, parts, built, requested, think);
+    for (const r of report) {
+      memory.remember({ kind: "status", part: r.id, fact: r.state === "dropped" ? `dropped: ${r.reason ?? "gate finding"}` : `accepted${r.revise ? ` after ${r.revise} repair round(s)` : ""}` });
+    }
     log({ event: "swarm", stage: "gate", accepted: accepted.length, report, ms: Date.now() - t0 });
     if (!accepted.length) {
       return degrade(R().workloads?.[workload] ?? pool[0], "swarm:all-parts-dropped", requested, workload);
@@ -590,6 +623,7 @@ export function createSwarm(deps) {
     let gaps = Array.isArray(readParsed?.gaps) ? readParsed.gaps.map(String).filter(Boolean) : [];
     let criterion = gaps.length ? `Address every gap the cold read found: ${gaps.join("; ")}` : "The answer fully satisfies the original request";
     let deliverable = await runGate([criterion], [merged.text], { label: "deliverable", requested });
+    memory.remember({ kind: "verdict", fact: `deliverable: ${deliverable.ok ? deliverable.verdict : `unavailable (${deliverable.detail})`}` });
     let repair = 0;
     while (deliverable.ok && deliverable.verdict !== "supported" && gaps.length && repair < REVISE_ROUNDS) {
       repair++;
@@ -622,7 +656,9 @@ export function createSwarm(deps) {
       finalModel: merged.model,
       finalProviderId: merged.providerId,
       ms: Date.now() - t0,
+      facts: memory.size(),
     });
+    memory.remember({ kind: "status", fact: `delivered: ${accepted.length} of ${parts.length} parts, ${repair} repair round(s)` });
 
     if (res.writableEnded || res.destroyed) return;
     if (signals.stream) {

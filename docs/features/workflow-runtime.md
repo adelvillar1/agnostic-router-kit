@@ -81,6 +81,8 @@ that is the feature.
 | `git.diff(base?, rel?)` | The diff. |
 | `git.status()` / `git.log(n)` | Short status / recent log. |
 | `world.run(cmd, args?, opts?)` | Runs a command in the workspace. The workflow's one effect primitive. Returns `{ exitCode, stdout, stderr }`. |
+| `world.remember({kind, fact, part?})` | Records a fact about the run in its fact store. The coordination layer's write. |
+| `world.facts(opts?)` | Reads the store unscoped — every part's facts, optionally narrowed by `kind` or `part`. The plane's own read. |
 
 `files.*` and `git.*` are synchronous; `world.run` and `agent.ask` return promises.
 Writing `await` in front of the sync ones is harmless and matches the examples,
@@ -104,6 +106,39 @@ warning — one unsupported type never fails a workflow.
 
 Concurrency is ordinary `Promise.all`: five scouts in parallel are five
 `ask`s in one `await`, and the journal shows them interleaved under one phase.
+
+### The run's fact store
+
+An agent's knowledge at dispatch is only what the plane pushed: its brief, its
+contract, its own tool results. Everything else about the run — the pinned
+stack, the verdict on this part, a sibling's status — was unreachable, so a
+question the plane could answer in one line cost a tool round, an escalation,
+or a guess. The fact store closes that, and two rules make it safe:
+
+- **Coordination facts only.** A fact is something the plane decided or
+  measured, never a part's content. A sibling's built work is not a fact an
+  agent may ask for — that boundary is code, not a prompt.
+- **Declared kinds, not free text.** A fact is a journaled row with one of
+  `task`, `stack`, `environment`, `decision`, `verdict`, `status`, `phase`. An
+  unknown kind is refused by name rather than absorbed as prose.
+
+Two readers, one difference. `world.facts()` is the plane's own read and sees
+every part's facts — the scope hides a sibling's facts from the agents that
+build the parts, not from the layer that dispatched them. An agent reads
+through the `recall` tool, which sees the run's public facts and its own part's
+and nothing else. An agent built with `scope: { part }` gets that view; naming
+a sibling part in a call is refused by name and journaled. `remember` is
+deliberately not on the agent surface: a model that could write run facts could
+rewrite the run's own record of itself.
+
+Both caps record what they held back rather than dropping it silently — 40
+facts and 8KB, with a truncation line telling the reader to ask for one kind at
+a time. Every recall is journaled with the fact ids it returned and the byte
+count, so what an agent was shown is auditable after the fact.
+
+The push rule: a fact known at dispatch belongs in the brief. The store is for
+what comes after — the verdict that arrives mid-run, the status that changes,
+the phase the run moved into.
 
 ### What agents cannot do
 
@@ -199,6 +234,7 @@ completion with tools.
 
 - `lib/workflow/engine.mjs` — loading, the surface, the agent tool loop, the journal.
 - `lib/workflow/tools.mjs` — the workspace tool definitions and the caps.
+- `lib/workflow/harness.mjs` — the harness block, the dispatch gate, and the run's fact store.
 - `lib/workflow/schema.mjs` — interface text → JSON schema; ask-site annotation.
 - `lib/workflow/meta.mjs` — the metadata header, the argument contract.
 - `lib/workflowlib.mjs` — reads `workflows/`, builds the routing registry.
