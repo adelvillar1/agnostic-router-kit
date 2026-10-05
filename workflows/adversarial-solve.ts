@@ -78,6 +78,13 @@ interface PartResult {
   location: string;
   /** The interface actually exposed: paths + exported names. */
   provides: string;
+  /**
+   * Set by the plane's result check when the report did not check out against the
+   * part's own contract (a declared file missing, a path it does not own, a result
+   * that confirms work rather than describing it). The champion reads it before
+   * integrating, so a defective part is reconciled rather than silently built on.
+   */
+  unverified?: string;
 }
 
 interface Solution {
@@ -119,6 +126,15 @@ interface Finding {
 
 const task = String(args.task ?? "").trim() || "Solve the problem.";
 
+/**
+ * A part's label for a journal line. The part list is model output, and a plan
+ * that arrives without a title is a plan the plane must still be able to log —
+ * a null title once reached a `.slice` and killed the run mid-gate (journal
+ * 2026-10-05_15-44-17: the judge pair lands, then the run dies before that
+ * round's first verdict line). An untrusted shape means the label is coerced.
+ */
+const partLabel = (p: Part): string => String(p?.title ?? "(part with no title)").slice(0, 60);
+
 // ── the dispatch gate: the plane's, not this workflow's ─────────────────────
 // validateContract (deterministic: file collisions, self-containment,
 // dependency phrases) and judgeContract (sys1, two heads) live in
@@ -131,6 +147,41 @@ const readDeliverable = (): string => {
   } catch {
     return "";
   }
+};
+
+// ── result shaping on the way back ──────────────────────────────────────────
+// The dispatch gate validates a part's contract before it runs; this is the
+// same gate turned around, checking what came back against what was sent. It
+// is the plane's validatePartResult — deterministic code, no model — with the
+// namespace and the disk probe supplied here, because only this workflow knows
+// where its builders write and only the workspace knows what is on it.
+// The disk probe is ONE allowlisted command for every declared path, so the
+// check costs a single journal line rather than a read per file.
+const existsUnder = (ns: string, relPaths: string[]): ((rel: string) => boolean) => {
+  const declared = relPaths.map((p) => String(p ?? "").trim()).filter(Boolean);
+  if (!declared.length) return () => true;
+  const script =
+    `const fs=require("node:fs");` +
+    `process.stdout.write(JSON.stringify(${JSON.stringify(declared.map((p) => `${ns}${p}`))}` +
+    `.map(p=>[p,fs.existsSync(p)&&fs.statSync(p).isFile()])))`;
+  let present = new Set<string>();
+  try {
+    const r = world.run("node", ["-e", script]);
+    const pairs = JSON.parse(String(r.stdout ?? "[]")) as Array<[string, boolean]>;
+    present = new Set(pairs.filter(([, ok]) => ok).map(([p]) => String(p).slice(ns.length)));
+  } catch (e) {
+    // A failed probe is not a pass: every declared path reads as missing, so the
+    // part fails its own check rather than being waved through on an unmeasured
+    // disk. The champion hears about it either way.
+    log(`existence probe failed for ${declared.length} path(s): ${String((e as Error)?.message ?? e).slice(0, 120)}`);
+  }
+  return (rel: string) => present.has(String(rel ?? "").trim());
+};
+
+/** The problems in a part's report, or [] when it checks out. */
+const resultProblems = (ns: string, p: Part, result: PartResult): string[] => {
+  const exists = existsUnder(ns, p.files ?? []);
+  return validatePartResult(result, p, { namespace: ns, exists });
 };
 
 // ── the deliverable gate (dev-decisions evidence-gate) ──────────────────────
@@ -241,7 +292,7 @@ const solutions = await Promise.all(
         for (const p of current) {
           const g = await judgeContract(p, task, sys1.judge);
           const v = gateVerdict(g);
-          log(`gate "${p.title.slice(0, 60)}" → ${v}`);
+          log(`gate "${partLabel(p)}" → ${v}`);
           if (gateNeedsFixup(g)) problems.push(`"${p.title}": ${v}`);
         }
         if (!problems.length) return { parts: current, notes };
@@ -293,11 +344,35 @@ const solutions = await Promise.all(
         `Stack: ${strategy.stack}\n\n` +
         `YOUR PART (${part.title}):\n${part.instruction}\n\n` +
         `Return built, location, and provides (the interface you actually exposed: paths + exported names).`;
+
+      // Result shaping: check the report against the contract before the champion
+      // ever sees it. One re-ask naming what did not check out, because the agent
+      // that built the part is the only one that knows whether it mis-reported or
+      // never wrote the file. What still fails goes upstream annotated — a champion
+      // that integrates a defective part without being told is the failure this
+      // check exists to prevent, so "unverified" travels with the result.
+      const checked = async (part: Part, result: PartResult, asker: typeof builder): Promise<PartResult> => {
+        let problems = resultProblems(ns, part, result);
+        if (problems.length) {
+          log(`"${partLabel(part)}" did not check out on the way back (${problems.length}) — one re-ask`);
+          result = await asker.ask<PartResult>(
+            `${brief(part)}\n\nYour report did not check out against your own contract:\n` +
+              problems.map((x) => `- ${x}`).join("\n") +
+              `\n\nCorrect it. If you described work you did not write, describe what you actually did; if you wrote ` +
+              `the files and reported them wrongly, correct the report. Return built, location, and provides again.`
+          );
+          problems = resultProblems(ns, part, result);
+        }
+        return problems.length
+          ? { ...result, unverified: `${problems.length} problem(s) with this part's own report: ${problems.join("; ")}` }
+          : result;
+      };
+
       try {
-        return await builder.ask<PartResult>(brief(p));
+        return await checked(p, await builder.ask<PartResult>(brief(p)), builder);
       } catch (e) {
         if (!/did not settle after \d+ tool rounds/.test(String(e?.message ?? e))) throw e;
-        log(`"${p.title.slice(0, 60)}" hit the tool-round cap — decomposing the part (one level)`);
+        log(`"${partLabel(p)}" hit the tool-round cap — decomposing the part (one level)`);
         const split = await builder.ask<PartList>(
           `Your attempt at this part hit the tool-round cap before completing. If you were stuck in a loop on one ` +
             `problem rather than steadily building, return {"parts":[]} — the run will escalate. Otherwise return ` +
@@ -308,9 +383,11 @@ const solutions = await Promise.all(
         if (!split.parts.length) {
           throw new Error(`part "${p.title}" is stuck, not big — escalating per the builder's own report`);
         }
+        // Each sub-agent checks its own report, so the re-ask goes to the agent
+        // that did the work rather than to the parent that dispatched it.
         const subs = await Promise.all(
-          split.parts.map((sp) =>
-            agent(`Builder for ${a.name} · ${sp.title}`, {
+          split.parts.map((sp) => {
+            const sub = agent(`Builder for ${a.name} · ${sp.title}`, {
               system:
                 "You build one atomic part of one champion's approach in a solution competition. " +
                 "You see the problem, your part, and nothing else: no other parts, no other champions, no other files. " +
@@ -322,13 +399,19 @@ const solutions = await Promise.all(
                 extra:
                   "A previous builder attempt on the parent part hit the tool-round cap; its partial work may already exist in the owned paths.",
               },
-            }).ask<PartResult>(brief(sp))
-          )
+            });
+            return { sp, sub };
+          })
         );
+        const built = await Promise.all(
+          subs.map(async ({ sp, sub }) => ({ sp, result: await checked(sp, await sub.ask<PartResult>(brief(sp)), sub) }))
+        );
+        const unverified = built.filter((b) => b.result.unverified);
         return {
-          built: subs.map((s) => s.built).join(" · "),
-          location: [...new Set(subs.map((s) => s.location))].join(", "),
-          provides: subs.map((s) => s.provides).join("; "),
+          built: built.map((s) => s.result.built).join(" · "),
+          location: [...new Set(built.map((s) => s.result.location))].join(", "),
+          provides: built.map((s) => s.result.provides).join("; "),
+          ...(unverified.length ? { unverified: unverified.map((u) => u.result.unverified).join(" · ") } : {}),
         };
       }
     };
@@ -337,7 +420,14 @@ const solutions = await Promise.all(
       `Problem: ${task}\n\nYour approach: ${a.name} — ${a.rationale}\n` +
         `Stack: ${strategy.stack}\n\n` +
         `Your parts, built by your builders:\n${dispatch
-          .map((p, i) => `PART ${i + 1} (${p.title})\n  built: ${parts[i].built}\n  location: ${parts[i].location}\n  provides: ${parts[i].provides}`)
+          .map(
+            (p, i) =>
+              `PART ${i + 1} (${p.title})\n  built: ${parts[i].built}\n  location: ${parts[i].location}\n  provides: ${parts[i].provides}` +
+              // A part that failed its own check is labelled, not hidden: the
+              // champion is the only agent that sees the whole approach, so it
+              // is the one that must reconcile a defective part.
+              (parts[i].unverified ? `\n  UNVERIFIED: ${parts[i].unverified}` : "")
+          )
           .join("\n\n")}\n\n` +
         (notes.length ? `Dispatch conflicts you must reconcile during integration:\n${notes.map((s) => `- ${s}`).join("\n")}\n\n` : "") +
         "Integrate your parts into ONE complete solution for the problem under " +
