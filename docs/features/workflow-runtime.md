@@ -463,13 +463,46 @@ completion with tools.
 
 ## Where the code lives
 
-- `lib/workflow/engine.mjs` — loading, the surface, the agent tool loop, the journal.
-- `lib/workflow/tools.mjs` — the workspace tool definitions and the caps.
-- `lib/workflow/harness.mjs` — the harness block, the dispatch gate, and the run's fact store.
-- `lib/workflow/schema.mjs` — interface text → JSON schema; ask-site annotation.
-- `lib/workflow/meta.mjs` — the metadata header, the argument contract.
-- `lib/workflowlib.mjs` — reads `workflows/`, builds the routing registry.
-- `lib/cli.mjs` — `kit workflows list|run|last|watch|graph`.
+The runtime is one npm package, `workflow-plane`, living in `lib/workflow/` —
+its own `package.json` with `type: module`, one `exports` entry per module, and
+zero runtime dependencies. Nothing outside the package reaches into it by a
+relative path: every consumer imports it by the package specifier. In the engine
+edition those are `lib/cli.mjs`, `lib/workflowlib.mjs`, `router/server.js` and
+`router/swarm.mjs`; in the kit they are `lib/cli.mjs` and `router/server.js`.
+The package's internal layout is therefore a detail only the plane knows, and a
+consumer's import never changes when the plane grows a module.
+
+Two consumers, one copy. The engine edition resolves `workflow-plane` through
+its own `node_modules` symlink onto `lib/workflow/`, which is the authoritative
+source. The kit resolves it as a `file:` dependency on that same checkout — the
+second hand-maintained copy is gone — and `kit apply` ships it beside the router
+as a set of files derived from the package's own exports rather than a written
+list. A run served by the installed runtime therefore reads the same modules a
+run in the development checkout does, and `tools/check-plane.mjs` is the check
+that this stays true: it fails the moment the kit's resolved package and the
+engine checkout diverge.
+
+### The module map
+
+| Module | What it owns |
+|---|---|
+| `engine.mjs` | The orchestration surface: `runWorkflow`, the agent factory, the ask loop, `answerEscalation`. |
+| `harness.mjs` | The harnessed agent control plane's assembly: the harness block, the dispatch gate, the run's fact store. |
+| `tools.mjs` | The workspace tools a workflow's agents may use, and the journal that records them. |
+| `transport.mjs` | The plane's only external protocol: one chat completion over the router, streamed, behind an idle cap. |
+| `context.mjs` | What a run may spend, and what happens when it has spent it: budget resolution, token accounting, context compaction. |
+| `runstate.mjs` | The state a run owns: its name, where it writes, its artifacts, and the error type it fails with. |
+| `services.mjs` | The harness services a real runtime gives its agents, as pure capped functions: install policy, bounded fetch, dev servers, format hooks. |
+| `schema.mjs` | TypeScript type text → JSON schema, for the workflow runtime's typed asks. |
+| `coerce.mjs` | Model answers → the shape the workflow declared. |
+| `meta.mjs` | The workflow file's metadata header and the argument contract. |
+| `events.mjs` | The shared journal-event normalizer both editions' CLIs and servers read. |
+| `graph.mjs` | The orchestration graph builder: plan → criteria → phases → runs → recap. |
+| `checkpoint.mjs` | Per-part checkpoints: the workspace isolation the swarm never had. |
+| `gitworld.mjs` | The workflow's view of a repository: status, diff, log, changed files. |
+
+`lib/workflowlib.mjs` reads `workflows/` and builds the routing registry from
+what it finds. `lib/cli.mjs` is `kit workflows list|run|last|watch|graph`.
 
 ## Judgment events
 
