@@ -396,6 +396,23 @@ const solutions = await Promise.all(
         `YOUR PART (${part.title}):\n${part.instruction}\n\n` +
         `Return built, location, and provides (the interface you actually exposed: paths + exported names).`;
 
+      // The part's spend is a run fact, not a line in a provider's dashboard.
+      // The champion integrates against these parts, and a part that cost 60k
+      // tokens is a different thing to integrate than one that cost 3k — the
+      // agent's own stats are the source, the same numbers its journal
+      // `account` lines carry.
+      const noteCost = (part: Part, asker: typeof builder): void => {
+        const st = asker.stats;
+        world.remember({
+          kind: "status",
+          part: partScope(ns, part),
+          fact:
+            `spent ${st.asks} ask(s) and ${st.toolCalls} tool call(s): ` +
+            `${st.promptTokens} prompt + ${st.completionTokens} completion tokens` +
+            `${st.compactions ? `, ${st.compactions} compaction(s)` : ""}`,
+        });
+      };
+
       // Result shaping: check the report against the contract before the champion
       // ever sees it. One re-ask naming what did not check out, because the agent
       // that built the part is the only one that knows whether it mis-reported or
@@ -416,6 +433,7 @@ const solutions = await Promise.all(
           );
           problems = resultProblems(ns, part, result);
         }
+        let out: PartResult;
         if (problems.length) {
           // Acceptance failure. The plane cannot tell a file this part wrote
           // from one it claimed, so the tree is untrustworthy with the report:
@@ -425,14 +443,17 @@ const solutions = await Promise.all(
           const rb = await world.rollback(cp);
           log(`"${partLabel(part)}" rolled back: ${rb.restored} restored, ${rb.removed} removed${rb.left.length ? `, ${rb.left.length} left` : ""}`);
           world.remember({ kind: "status", part: partScope(ns, part), fact: `rolled back: ${rb.restored} restored, ${rb.removed} removed` });
-          return {
+          out = {
             ...result,
             built: `${result.built} [ROLLED BACK — no files survive this part]`,
             location: `(rolled back — no files survive) ${result.location}`,
             unverified: `${problems.length} problem(s) with this part's own report: ${problems.join("; ")}`,
           };
+        } else {
+          out = result;
         }
-        return result;
+        noteCost(part, asker);
+        return out;
       };
 
       try {
@@ -450,6 +471,10 @@ const solutions = await Promise.all(
         if (!split.parts.length) {
           throw new Error(`part "${p.title}" is stuck, not big — escalating per the builder's own report`);
         }
+        // The parent's own spend — the capped attempt plus the split ask — is
+        // noted here, because the sub-parts below note theirs and the part as a
+        // whole cost both.
+        noteCost(p, builder);
         // Each sub-agent checks its own report, so the re-ask goes to the agent
         // that did the work rather than to the parent that dispatched it.
         const subs = await Promise.all(

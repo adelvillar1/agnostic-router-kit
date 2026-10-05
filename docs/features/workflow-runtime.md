@@ -255,6 +255,46 @@ all three shapes — a part that throws, a part rolled back by its caller, and a
 survivor building while its neighbour fails — with no agent dispatched, and
 asserts the workspace on disk afterwards.
 
+### What an ask costs, and what survives when it costs too much
+
+Rounds measure how stubborn an agent is; tokens measure what its history costs,
+and a provider's context window is a number rather than a count. The runtime
+accounts for both, per ask.
+
+- Every model call's prompt and completion tokens come from the upstream's own
+  usage block (the final chunk of a streamed completion), not from an estimate —
+  a workflow run is already metered in the router's ledger, and the run journal
+  now says the same thing. A provider that reports no usage gets the plane's own
+  four-characters-a-token measure instead, and the run's summary counts how many
+  calls were measured rather than reported, so a budget built on the totals can
+  see which part of them is a report and which is an estimate.
+- Each ask journals an `account` line: its prompt and completion tokens, its
+  tool rounds, and whether it was compacted. The tokens are the sum across the
+  ask's calls, because every round resends the whole history — that is what the
+  ask cost — while an agent's own `stats.promptTokens` / `completionTokens` /
+  `compactions` are readable from the workflow, and a delegated child's land on
+  the parent's the way its asks and tool calls already do: delegation is a
+  budget transfer.
+- When a prompt crosses the line (`--compact-tokens`, default 120k) the plane
+  compacts the history instead of letting the ask die at the provider's window.
+  What survives is decided by rule rather than by the summary: the system
+  message and the brief the plane wrote — instructions, the rendered contract,
+  and the run's measured facts — are kept verbatim, because they are the
+  plane-owned part of the history and the agent has no way to rebuild them.
+  Everything else becomes one summary, from exactly one deterministic ask
+  (temperature 0, no tools, no schema) whose own input is capped with the oldest
+  turns dropped first. If that ask fails, the history is truncated with a marker
+  rather than the ask dying — a rescue must not become a new failure mode.
+- The journal carries `compact` (the size that crossed the line, the size after,
+  how many messages were summarized, how many were kept, whether the history was
+  summarized or truncated, and how many were too old to summarize) alongside the
+  `account` lines, and `kit workflows watch` renders both.
+
+`workflows/tokens-probe.ts` drives both halves with real model calls: a
+`--compact-tokens 3000` run compacts the agent mid-ask, and both asks must still
+answer the calibration token and the acceptance criteria that live only in the
+brief and the contract.
+
 ### What agents cannot do
 
 - **Reach outside the workspace.** Every file tool resolves against the run's
