@@ -1,0 +1,33 @@
+{
+  "name": "workflow-plane",
+  "version": "1.0.0",
+  "description": "The harnessed agent control plane: what a workflow run assembles, allows, and journals.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    "./checkpoint.mjs": "./checkpoint.mjs",
+    "./engine.mjs": "./engine.mjs",
+    "./events.mjs": "./events.mjs",
+    "./graph.mjs": "./graph.mjs",
+    "./harness.mjs": "./harness.mjs",
+    "./meta.mjs": "./meta.mjs",
+    "./schema.mjs": "./schema.mjs",
+    "./services.mjs": "./services.mjs",
+    "./tools.mjs": "./tools.mjs"
+  },
+  "scripts": {
+    "check": "node --check checkpoint.mjs && node --check engine.mjs && node --check events.mjs && node --check graph.mjs && node --check harness.mjs && node --check meta.mjs && node --check schema.mjs && node --check services.mjs && node --check tools.mjs"
+  },
+  "keywords": [
+    "workflow",
+    "agent",
+    "control-plane"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/adelvillar1/agnostic-router-kit.git"
+  }
+}

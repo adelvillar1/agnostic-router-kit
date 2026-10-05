@@ -11,6 +11,9 @@
   "engines": {
     "node": ">=18"
   },
+  "dependencies": {
+    "workflow-plane": "file:lib/workflow"
+  },
   "scripts": {
     "kit": "node bin/agnostic-router-kit.mjs"
   }
