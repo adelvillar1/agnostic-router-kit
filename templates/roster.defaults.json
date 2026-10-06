@@ -14,7 +14,8 @@
   "version": 1,
   "router": {
     "port": 8300,
-    "localToken": "local-auto-router"
+    "localToken": "local-auto-router",
+    "apps": []
   },
   "typesafe": {
     "apiKeyEnv": "TYPESAFE_API_KEY",

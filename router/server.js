@@ -37,6 +37,11 @@ import { judgeViaFastino } from "./fastino.mjs";
 import { createSwarm } from "./swarm.mjs";
 import { normalizeEvent, isTerminal } from "workflow-plane/events.mjs";
 import { buildGraph } from "workflow-plane/graph.mjs";
+import { runWorkflow } from "workflow-plane/engine.mjs";
+import { resolveGrants } from "workflow-plane/tools.mjs";
+import { FACT_KINDS } from "workflow-plane/harness.mjs";
+import { slug, freeRunDir } from "workflow-plane/runstate.mjs";
+import { parseHeader, validateArgs } from "workflow-plane/meta.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const expand = (p) => (p.startsWith("~") ? path.join(os.homedir(), p.slice(1)) : p);
@@ -1163,6 +1168,36 @@ const RUN_BUFFER_CAP = 500;
 const wfRuns = new Map(); // runId -> { name, offset, partial, buffer, count, startedAt, lastEventAt, terminal, summary, gnodes }
 const wfSseClients = new Set();
 
+// ── the run API: applications spawn and steer workflow runs ─────────────────
+// Runs this process spawned, remembered for ownership ("who may answer this
+// run"). The journal is the durable record — readRunOwner re-derives the same
+// fact from a run-start line, so ownership survives a server restart.
+const spawnOwners = new Map(); // runId -> app name (or "operator")
+
+function findWorkflowFile(name) {
+  const dir = path.join(expand(String(config.kitRoot ?? "")), "workflows");
+  for (const ext of [".ts", ".mts", ".js", ".mjs"]) {
+    const candidate = path.join(dir, name + ext);
+    try {
+      if (fs.statSync(candidate).isFile()) return candidate;
+    } catch {}
+  }
+  return null;
+}
+
+function readRunOwner(runDir) {
+  try {
+    for (const line of fs.readFileSync(path.join(runDir, "run.jsonl"), "utf8").split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        const row = JSON.parse(line);
+        if (row.kind === "run-start") return typeof row.app === "string" ? row.app : null;
+      } catch {}
+    }
+  } catch {}
+  return null;
+}
+
 function wfBroadcast(obj) {
   const line = `data: ${JSON.stringify(obj)}\n\n`;
   for (const res of [...wfSseClients]) {
@@ -1369,11 +1404,15 @@ const server = http.createServer((req, res) => {
       return;
     }
     // Workflow run stream. EventSource cannot set an Authorization header, so
-    // the local token may arrive as ?token= — same secret, same gate, and the
-    // surface is 127.0.0.1-only either way.
+    // a token may arrive as ?token= — the operator's local token or an app
+    // token, same gate either way, and the surface is 127.0.0.1-only.
     if (req.method === "GET" && req.url.startsWith("/api/workflow-events")) {
       const u = new URL(req.url, "http://localhost");
-      if (u.searchParams.get("token") !== config.localToken) {
+      const presented = u.searchParams.get("token");
+      const known =
+        presented === config.localToken ||
+        (Array.isArray(config.apps) ? config.apps : []).some((a) => a.token && presented === a.token);
+      if (!known) {
         res.writeHead(401, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: { message: "router: bad local token" } }));
         return;
@@ -1385,10 +1424,25 @@ const server = http.createServer((req, res) => {
       });
       res.write(`data: ${JSON.stringify({ type: "hello", runs: wfRunsSnapshot() })}\n\n`);
       wfSseClients.add(res);
-      req.on("close", () => wfSseClients.delete(res));
+      // The response's close, not the request's: a request stream closes as
+      // soon as its (empty) body is consumed, which would drop the client one
+      // frame in — the connection is what an SSE subscription lives on.
+      res.on("close", () => wfSseClients.delete(res));
       return;
     }
-    if (auth !== `Bearer ${config.localToken}`) {
+    // One token gate, two token classes: the operator's localToken (no
+    // ceiling — the CLI and dashboard's class) and an app token from the
+    // roster's router.apps (its spawns are enforced against its grant
+    // ceiling and workspace root at the run API below). Unknown → 401, as
+    // it has always been.
+    let caller = null;
+    if (auth === `Bearer ${config.localToken}`) {
+      caller = { operator: true };
+    } else {
+      const hit = (Array.isArray(config.apps) ? config.apps : []).find((a) => a.token && auth === `Bearer ${a.token}`);
+      if (hit) caller = { operator: false, app: hit };
+    }
+    if (!caller) {
       res.writeHead(401, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: { message: "router: bad local token" } }));
       return;
@@ -1450,6 +1504,257 @@ const server = http.createServer((req, res) => {
           try { res.end(); } catch {}
         }
       }
+      return;
+    }
+    // ── run API — applications spawn and steer workflow runs ────────────────
+    // A spawn is a capability like any other on this machine: declared,
+    // validated against the caller's ceiling, journaled — refused spawns land
+    // in the router log with the rule that refused them, since no run
+    // directory exists to carry a journal of its own.
+    const jsonOut = (code, obj) => {
+      res.writeHead(code, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+      res.end(JSON.stringify(obj));
+    };
+    if (req.method === "POST" && req.url === "/v1/runs") {
+      let body;
+      try {
+        body = JSON.parse(raw);
+      } catch {
+        jsonOut(400, { ok: false, error: "body is not valid JSON" });
+        return;
+      }
+      const app = caller.operator ? null : caller.app;
+      const appName = app ? app.name : "operator";
+      const refuse = (code, error) => {
+        log({ event: "run-spawn-refused", app: appName, detail: String(error).slice(0, 300) });
+        jsonOut(code, { ok: false, error });
+      };
+      const wfName = String(body?.workflow ?? "").replace(/\.(m?ts|js)$/, "");
+      const wfFile = wfName ? findWorkflowFile(wfName) : null;
+      if (!wfFile) {
+        refuse(400, `no workflow named "${wfName}" — the library lives under the kit root's workflows/`);
+        return;
+      }
+      // Args validate against the workflow's own header here — the same
+      // validation the engine applies, pulled forward so a bad spawn is a 400
+      // rather than a runId whose run never came to exist.
+      try {
+        const problems = validateArgs(parseHeader(fs.readFileSync(wfFile, "utf8"), wfName), body?.args ?? {});
+        if (problems.length) {
+          refuse(400, `${wfName}: ${problems.join("; ")}`);
+          return;
+        }
+      } catch (e) {
+        refuse(400, String(e?.message ?? e));
+        return;
+      }
+      // Facts validate here and again in the engine (the engine's check is
+      // the authoritative one); this one fails the request before a run
+      // directory exists to carry a failure.
+      const facts = Array.isArray(body?.facts) ? body.facts : [];
+      for (const f of facts) {
+        if (!f || !FACT_KINDS.includes(String(f.kind)) || !String(f.fact ?? "").trim()) {
+          refuse(
+            400,
+            `bad fact ${JSON.stringify(f).slice(0, 120)} — needs a declared kind (${FACT_KINDS.join(", ")}) and non-empty text`,
+          );
+          return;
+        }
+      }
+      if (
+        body?.answers !== undefined &&
+        (typeof body.answers !== "object" ||
+          body.answers === null ||
+          Array.isArray(body.answers) ||
+          !Object.values(body.answers).every((v) => typeof v === "string"))
+      ) {
+        refuse(400, "answers must be an object of topic → string answer");
+        return;
+      }
+      // Grants resolve before anything runs, so an unknown capability fails
+      // at the request rather than mid-run — the same law the engine applies.
+      try {
+        resolveGrants({ grants: body.grants, allowCommands: body.allowCommands });
+      } catch (e) {
+        refuse(400, String(e?.message ?? e));
+        return;
+      }
+      // The ceiling: an app's spawns are enforced against its declared grant
+      // list; the operator token has none. Naming the overreach is the point.
+      if (app && Array.isArray(app.grantCeiling)) {
+        const ceiling = new Set(app.grantCeiling);
+        const requested = String(body?.grants ?? "")
+          .split(",")
+          .map((g) => g.trim())
+          .filter(Boolean);
+        const over = requested.filter((g) => !ceiling.has(g));
+        if (over.length) {
+          refuse(
+            403,
+            `out of bounds: ${over.join(", ")} ${over.length > 1 ? "are" : "is"} not in ${app.name}'s ceiling — an app spawns under its declared grants, never beyond them`,
+          );
+          return;
+        }
+      }
+      // The workspace: an app runs inside its own root (its roster workdir or
+      // the runtime default), and a body workdir is a subpath of that root —
+      // outside is refused by name, the same closure as recall's sibling
+      // refusal. The operator may name any directory, like the CLI.
+      let workdir;
+      if (caller.operator) {
+        workdir = body?.workdir ? path.resolve(String(body.workdir)) : process.cwd();
+      } else {
+        const root = path.resolve(
+          app.workdir ? expand(String(app.workdir)) : path.join(KIT_HOME_DIR, "apps", app.name, "workspaces"),
+        );
+        const requested = path.resolve(root, String(body?.workdir ?? "."));
+        if (requested !== root && !requested.startsWith(root + path.sep)) {
+          refuse(
+            403,
+            `out of bounds: ${String(body?.workdir)} is outside ${app.name}'s workspace root — an app runs in its own root, never outside it`,
+          );
+          return;
+        }
+        workdir = requested;
+      }
+      // The run id is the run directory's name — computed here so the
+      // response hands it back before the run exists, and freeRunDir still
+      // guards the same-second collision the plane fixed.
+      const outDir = freeRunDir(`${slug(Date.now())}-${wfName}`);
+      const runId = path.basename(outDir);
+      spawnOwners.set(runId, appName);
+      log({ event: "run-spawned", runId, app: appName, workflow: wfName, grants: String(body?.grants ?? "") });
+      runWorkflow(wfFile, {
+        args: body?.args ?? {},
+        workdir,
+        outDir,
+        model: body?.model ?? "hard",
+        grants: body?.grants,
+        allowCommands: body?.allowCommands,
+        netDomains: body?.allowDomains,
+        // The search backend's key resolves from this server's env file at the
+        // boundary; the plane sees only the declared name's value.
+        search: {
+          backend: "firecrawl",
+          apiKeyEnv: "FIRECRAWL_API_KEY",
+          envMap: { FIRECRAWL_API_KEY: envFile().FIRECRAWL_API_KEY },
+          scrapeBaseUrl: envFile().FIRECRAWL_SCRAPE_URL,
+          scrapeApiVersion: envFile().FIRECRAWL_SCRAPE_VERSION,
+        },
+        answers: body?.answers ?? {},
+        facts,
+        app: appName,
+      })
+        .then(({ summary }) => {
+          log({ event: "run-api-run-done", runId, ok: summary.ok, durationMs: summary.durationMs });
+        })
+        .catch((e) => {
+          // The engine already journals the failure as a real run (summary +
+          // run-failed line); this catch is the router log only.
+          log({ event: "run-api-run-failed", runId, detail: String(e?.message ?? e).slice(0, 300) });
+        });
+      jsonOut(200, { ok: true, runId, runDir: outDir });
+      return;
+    }
+    const runApiMatch = /^\/v1\/runs\/([^/]+)(\/answers|\/artifacts)$/.exec(req.url.split("?")[0]);
+    if (req.method === "POST" && runApiMatch && runApiMatch[2] === "/answers") {
+      const runId = decodeURIComponent(runApiMatch[1]);
+      const runDir = path.join(WORKFLOW_RUNS_DIR, runId);
+      if (!fs.existsSync(path.join(runDir, "run.jsonl"))) {
+        jsonOut(404, { ok: false, error: `unknown run: ${runId}` });
+        return;
+      }
+      // Scoped like recall: an app answers only the runs it spawned; the
+      // operator answers any. Ownership survives a restart because the
+      // journal, not this process's memory, is the record.
+      const owner = spawnOwners.get(runId) ?? readRunOwner(runDir);
+      if (!caller.operator && owner !== caller.app.name) {
+        log({ event: "run-answer-refused", runId, app: caller.app.name, owner });
+        jsonOut(403, {
+          ok: false,
+          error: `out of bounds: ${runId} was spawned by ${owner ?? "another caller"} — an app answers its own runs`,
+        });
+        return;
+      }
+      let body;
+      try {
+        body = JSON.parse(raw);
+      } catch {
+        jsonOut(400, { ok: false, error: "body is not valid JSON" });
+        return;
+      }
+      const topic = String(body?.topic ?? "").trim();
+      const answer = body?.answer;
+      if (!topic || typeof answer !== "string" || !answer.trim()) {
+        jsonOut(400, { ok: false, error: "an answer needs a non-empty topic and a non-empty string answer" });
+        return;
+      }
+      fs.appendFileSync(
+        path.join(runDir, "answers.jsonl"),
+        JSON.stringify({ topic, answer, app: caller.operator ? "operator" : caller.app.name, t: Date.now() }) + "\n",
+      );
+      jsonOut(200, { ok: true, runId, topic });
+      return;
+    }
+    if (req.method === "GET" && runApiMatch && runApiMatch[2] === "/artifacts") {
+      const runId = decodeURIComponent(runApiMatch[1]);
+      const runDir = path.join(WORKFLOW_RUNS_DIR, runId);
+      const artifactsDir = path.join(runDir, "artifacts");
+      if (!fs.existsSync(path.join(runDir, "run.jsonl"))) {
+        jsonOut(404, { ok: false, error: `unknown run: ${runId}` });
+        return;
+      }
+      // Scoped like the answers route: an app reads only its own runs'
+      // artifacts; the operator reads any. Two apps spawning side by side is
+      // the run-scoped analogue of part isolation.
+      const owner = spawnOwners.get(runId) ?? readRunOwner(runDir);
+      if (!caller.operator && owner !== caller.app.name) {
+        log({ event: "run-artifacts-refused", runId, app: caller.app.name, owner });
+        jsonOut(403, {
+          ok: false,
+          error: `out of bounds: ${runId} was spawned by ${owner ?? "another caller"} — an app reads its own runs' artifacts`,
+        });
+        return;
+      }
+      const u = new URL(req.url, "http://localhost");
+      const wanted = u.searchParams.get("file");
+      if (wanted) {
+        // A download lives inside this run's artifacts directory or it does
+        // not exist: `..` and foreign paths resolve to the same refusal.
+        const full = path.resolve(artifactsDir, wanted);
+        if (full !== artifactsDir && !full.startsWith(artifactsDir + path.sep)) {
+          jsonOut(403, { ok: false, error: "out of bounds: artifacts are inside this run's directory, never outside it" });
+          return;
+        }
+        let st = null;
+        try {
+          st = fs.statSync(full);
+        } catch {}
+        if (!st || !st.isFile()) {
+          jsonOut(404, { ok: false, error: `no artifact file: ${wanted}` });
+          return;
+        }
+        res.writeHead(200, { "Content-Type": "application/octet-stream", "Content-Length": st.size });
+        fs.createReadStream(full).pipe(res);
+        return;
+      }
+      const index = [];
+      try {
+        for (const idDir of fs.readdirSync(artifactsDir, { withFileTypes: true }).filter((d) => d.isDirectory())) {
+          for (const vDir of fs.readdirSync(path.join(artifactsDir, idDir.name), { withFileTypes: true }).filter((d) => d.isDirectory())) {
+            for (const f of fs.readdirSync(path.join(artifactsDir, idDir.name, vDir.name), { withFileTypes: true }).filter((d) => d.isFile())) {
+              const rel = path.join(idDir.name, vDir.name, f.name);
+              index.push({
+                id: idDir.name,
+                version: Number(vDir.name.replace(/^v/, "")) || null,
+                file: rel,
+                bytes: fs.statSync(path.join(artifactsDir, rel)).size,
+              });
+            }
+          }
+        }
+      } catch {}
+      jsonOut(200, { ok: true, runId, artifacts: index });
       return;
     }
     // ── dashboard API — same token gate as the proxy routes ─────────────────

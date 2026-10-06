@@ -85,11 +85,20 @@ kit upgrade                git pull + apply
 
 - Router listens on `127.0.0.1` only. All endpoints except `/healthz` and the
   dashboard page require the local token (`router.localToken` in the roster).
+- The run API adds app tokens: `router.apps` rows in the roster, each with its
+  own token, a grant ceiling its spawns are enforced against, and its own
+  workspace root. A token's blast radius is its ceiling.
 - Keys live only in the runtime `.env` (chmod 600, gitignored) and env
   variables. `roster.json` holds env-var *names*, never values.
 
 ## Roadmap
 
+Shipped 2026-10-05/06: the run API (`POST /v1/runs`, live escalation answers,
+artifact retrieval — `docs/features/run-api.md`) and the loop library
+(`docs/features/loop-library.md`) — deep-research, remediate, triage,
+refine-loop, red-team, watchdog, router-eval — with flat judgments riding the
+sys1 judge layer and search credits budgeted in the workflow.
 Wave 2: portable workflow library (chat-only workflows + vendored skill trees,
 no absolute paths). Wave 3: proxy-internal swarm execution. Wave 4: swarm
-gates composed from dev-decisions. See `docs/plans/`.
+gates composed from dev-decisions. Next: an AG-UI rendering of the run event
+stream. See `docs/plans/`.
