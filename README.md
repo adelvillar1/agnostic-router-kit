@@ -79,8 +79,23 @@ below are light-theme renders; the interactive versions carry the file and line 
 - **Dashboard.** The router serves its own dashboard at `/dashboard` — the usage ledger, provider enable/disable,
   quota status, the delegation and workflow assignment view, live run activity, and a Save & apply button that writes
   the roster and re-renders it in place.
+- **A chat and an agent control plane.** `/chat` is a conversation with the router (streamed, verdict shown) beside a
+  live view of every connected harness — its runs, its journals, and its open questions, answerable in place.
+  `/setup` is the guided half of installation: the router computes what is missing, the browser collects it.
 
 ## New-machine quickstart
+
+**The one-command path** — asks a few questions (keys included, entered hidden), runs every step below, and ends with a
+green doctor and a link to the chat:
+
+```bash
+git clone git@github.com:adelvillar1/agnostic-router-kit.git && cd agnostic-router-kit
+node bin/agnostic-router-kit.mjs quickstart
+```
+
+Scripted or containerized installs take the same road without prompts: `kit quickstart --yes --skip-install --skip-service`.
+
+**The manual path**, for power users who want to see every gear — each step is what the wizard runs:
 
 ```bash
 git clone git@github.com:adelvillar1/agnostic-router-kit.git && cd agnostic-router-kit
@@ -117,6 +132,21 @@ node bin/agnostic-router-kit.mjs workflows run deep-research --args '{"topic":"�
 `model` accepts `auto`, any profile name in the roster (`quick`, `code`, `hard`, `prose`, `long-context`, `vision`,
 `mixture`, `deep`, `bulk`), or a literal `providerId/modelId` target. The default operator token is the roster's
 `router.localToken`; app callers use their own row token.
+
+## Surfaces in the browser (and on the desktop)
+
+Once the router runs, the terminal is optional:
+
+- **`/chat`** — chat with the router (`model: auto`, streamed, the routing verdict under every reply) and watch every
+  connected agent — ZCode, Codex, Hermes, anything holding an app token — with its live runs. When a run needs a human
+  decision, the question appears right there with an answer box; the run holds for you (spawn with `awaitOwnerMs`) and
+  resumes the moment you answer.
+- **`/setup`** — the guided half in the browser: a readiness checklist computed by the router, key entry (write-only —
+  values land in the local `.env`, chmod 600, and never come back), and a connect-an-agent flow that mints an app token
+  and hands you the three lines a harness needs: base URL, token, `model: auto`.
+- **`/dashboard`** — the power console: usage ledger, provider enable/disable, quota, delegation, live run activity.
+- **The desktop shell** (`app/`, Electron) opens `/chat` in its own window, starts the router when no service manages
+  it, and dies with it when it does. `npm start` inside `app/`; `--preflight-check` verifies the non-GUI half.
 
 ## Everyday use
 
@@ -222,7 +252,10 @@ of globals: `args, agent, log, phase, report, escalate, artifact, files, git, wo
 - **Keys live only in the runtime `.env`** (chmod 600, gitignored) and the environment. `roster.json` holds env-var
   names; a raw `apiKey` in it is a warning at apply time. Search keys resolve at the wire, so neither the CLI nor the
   workflows carry key material — a key-neutrality grep over `lib/` and `workflows/` returns 0.
-- **Router listens on `127.0.0.1` only.** All endpoints except `/healthz` and the dashboard page require a token.
+- **Router listens on `127.0.0.1` only.** All endpoints except `/healthz` and the page shells require a token; the
+  whole `/api/` control plane requires the operator token specifically — app tokens act through `/v1`, scoped by their
+  ceiling and workspace. `POST /api/keys` is write-only: the response says whether a name resolves, never what was
+  written.
 - **Fail-open everywhere above the HTTP layer.** Judge outage, missing key, low confidence, sys1 down → default
   workload, tagged in the log, request still served. Degraded state is never silent: `status`, `apply`, and `doctor`
   all report it.
@@ -235,12 +268,14 @@ of globals: `args, agent, log, phase, report, escalate, artifact, files, git, wo
 roster.json                  the machine: providers (keys by env name), tiers, profiles, app rows
 templates/roster.defaults.json   starter roster for `kit init --template`
 bin/agnostic-router-kit.mjs  the `kit` CLI
-lib/                         roster model + resolution, render, .env, service, CLI
+lib/                         roster model + resolution, render, .env, service, CLI, prompts
 lib/workflow/                the plane: 14 modules — engine, runstate, checkpoint, tools, services,
                              transport, events, graph, harness, meta, schema, coerce, context, gitworld
-router/                      the proxy: server.js, quota, usage, suggest, swarm, fastino (sys1), dashboard
+router/                      the proxy: server.js, quota, usage, suggest, swarm, fastino (sys1),
+                             dashboard.html, setup.html, chat.html
+app/                         the Electron shell: preflight, owns-or-attaches the router, opens /chat
 workflows/                   the loop library + the one-pass workflows (.ts, runnable on the plane)
-tools/                       probe-run-api.mjs (contract probe, zero model calls), compare-journals.py
+tools/                       contract probes (run-api, keys-endpoint, chat-surface — zero model calls), compare-journals.py, visual/ (Playwright screenshots)
 docs/architecture/           the interactive diagrams + overview.md, their light-theme stills, and the script that renders them
 docs/features/               per-feature records
 docs/plans/                  plan-as-contracts
@@ -256,7 +291,7 @@ service keeps the runtime copy alive, so `git pull` + `kit upgrade` never moves 
 - The judgment adds ~1–3s to the first request of a task; subsequent requests in the same task are cache hits. A judge
   outage degrades to the default workload — it never fails a request.
 - `kit` manages macOS launchd and Linux systemd user units; on other platforms it tells you how to run the router by
-  hand.
+  hand — or lets the desktop shell own the process (started with the app, dead with it).
 - No artificial token limits anywhere; `routing.wideChars` only diverts oversized payloads to the wide-context model.
 - Scraping needs an operator-hosted Firecrawl (`FIRECRAWL_SCRAPE_URL`). Unset, enrichment skips by name and the run
   proceeds on search rows — a configured absence, not a crash.

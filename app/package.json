@@ -1,0 +1,68 @@
+{
+  "name": "agnostic-router-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Desktop shell for the agnostic-router-kit: a window over the router the kit already ships",
+  "main": "main.mjs",
+  "scripts": {
+    "start": "electron .",
+    "preflight": "electron . --preflight-check",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "org.agnostic-router.desktop",
+    "productName": "auto-router",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.mjs",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../",
+        "to": "agnostic-router-kit",
+        "filter": [
+          "bin/**/*",
+          "lib/**/*",
+          "router/*.js",
+          "router/*.mjs",
+          "router/*.html",
+          "router/package.json",
+          "workflows/**/*",
+          "templates/**/*",
+          "package.json",
+          "README.md"
+        ]
+      }
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "category": "public.app-category.developer-tools",
+      "identity": null
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "deb",
+      "category": "Development"
+    }
+  },
+  "allowScripts": {
+    "electron@33.4.11": true
+  }
+}

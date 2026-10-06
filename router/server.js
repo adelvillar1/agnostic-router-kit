@@ -40,7 +40,7 @@ import { buildGraph } from "workflow-plane/graph.mjs";
 import { runWorkflow } from "workflow-plane/engine.mjs";
 import { resolveGrants } from "workflow-plane/tools.mjs";
 import { FACT_KINDS } from "workflow-plane/harness.mjs";
-import { slug, freeRunDir } from "workflow-plane/runstate.mjs";
+import { slug, freeRunDir, KIT_HOME } from "workflow-plane/runstate.mjs";
 import { parseHeader, validateArgs } from "workflow-plane/meta.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -73,6 +73,8 @@ const usage = createUsage({
   weightOf: (pid, ts) => offpeakWeight(cachedRoster()?.providers?.[pid]?.quota, ts),
 });
 const DASHBOARD_FILE = path.join(__dirname, "dashboard.html");
+const SETUP_FILE = path.join(__dirname, "setup.html");
+const CHAT_FILE = path.join(__dirname, "chat.html");
 
 // The kit checkout the roster and the apply pipeline live in. The dashboard's
 // save-and-apply endpoint shells out to the kit CLI there — the CLI is the
@@ -186,6 +188,48 @@ function envFile() {
 let tsClient = null;
 function typesafeKey() {
   return envFile().TYPESAFE_API_KEY || null;
+}
+
+/**
+ * Merge NAME=value pairs into the runtime .env — the write-only half of
+ * envFile(). Line-wise on purpose: comment lines and ordering survive, only
+ * the named keys are replaced (appended at the end when new). Atomic rename
+ * and mode 600, the same contract `kit env set` gives the file. The value
+ * lives here and nowhere else — callers respond with configured-booleans,
+ * never with what was written.
+ */
+function writeEnvPairs(pairs) {
+  const p = expand(config.typesafeEnvFile);
+  let lines = [];
+  try {
+    lines = fs.readFileSync(p, "utf8").split("\n");
+  } catch {}
+  const pending = new Map(Object.entries(pairs));
+  const out = lines.map((line) => {
+    const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=/);
+    if (m && pending.has(m[1])) {
+      const v = pending.get(m[1]);
+      pending.delete(m[1]);
+      return `${m[1]}=${v}`;
+    }
+    return line;
+  });
+  for (const [k, v] of pending) out.push(`${k}=${v}`);
+  try {
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    const tmp = `${p}.tmp-keys`;
+    fs.writeFileSync(tmp, out.join("\n"));
+    fs.renameSync(tmp, p);
+    fs.chmodSync(p, 0o600);
+    envCache = null;
+    envMtime = 0;
+    const fresh = envFile();
+    const configured = {};
+    for (const k of Object.keys(pairs)) configured[k] = Boolean(fresh[k]);
+    return { ok: true, configured };
+  } catch (e) {
+    return { ok: false, error: String(e?.message ?? e) };
+  }
 }
 
 async function judgeWorkload(signals) {
@@ -1160,9 +1204,12 @@ async function handleRoute(res, raw) {
 // runs live. The kit CLI is the only writer; this side only reads. Polling
 // (1s tick) rather than fs.watch: tmpfs/rename semantics make watch events
 // unreliable, and the 2s freshness budget only needs a 1s tick.
-const KIT_HOME_DIR = process.env.AGNOSTIC_ROUTER_KIT_HOME
-  ? path.resolve(process.env.AGNOSTIC_ROUTER_KIT_HOME)
-  : path.resolve(__dirname, "..");
+//
+// KIT_HOME comes from the plane — the same resolution every writer uses — so
+// the watcher tails the directory runs actually land in. It used to default
+// to the kit checkout here while writers defaulted to ~/.agnostic-router-kit,
+// and HTTP-spawned runs were invisible until the env var was set by hand.
+const KIT_HOME_DIR = KIT_HOME();
 const WORKFLOW_RUNS_DIR = path.join(KIT_HOME_DIR, "workflow-runs");
 const RUN_BUFFER_CAP = 500;
 const wfRuns = new Map(); // runId -> { name, offset, partial, buffer, count, startedAt, lastEventAt, terminal, summary, gnodes }
@@ -1348,6 +1395,200 @@ function wfGraphCached() {
   return graph;
 }
 
+// ── computed surfaces for the guided setup and the agent control plane ──────
+// The pages derive nothing: the router decides what is done, what is missing
+// and who needs attention, the same way it already decides workloads. A page
+// that recomputed readiness would drift from the router's own truth the first
+// time a rule moved.
+
+// The journal row's app field does not survive normalization, so per-run
+// attribution re-reads the run-start line once per run and caches it — the
+// journal, not memory, is the record (same law as run ownership).
+const ownerMemo = new Map();
+function runApp(runId) {
+  if (ownerMemo.has(runId)) return ownerMemo.get(runId);
+  let app = null;
+  try {
+    for (const line of fs.readFileSync(path.join(WORKFLOW_RUNS_DIR, runId, "run.jsonl"), "utf8").split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        const row = JSON.parse(line);
+        if (row.kind === "run-start") {
+          app = typeof row.app === "string" ? row.app : "operator";
+          break;
+        }
+      } catch {}
+    }
+  } catch {}
+  ownerMemo.set(runId, app);
+  return app;
+}
+
+// Live answers ride answers.jsonl next to the journal — an escalation whose
+// topic is answered there is resolved even before its resolved line lands.
+function readLiveAnswersFile(runDir) {
+  try {
+    return fs
+      .readFileSync(path.join(runDir, "answers.jsonl"), "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => {
+        try {
+          return JSON.parse(l);
+        } catch {
+          return null;
+        }
+      })
+      .filter((r) => r && typeof r.topic === "string");
+  } catch {
+    return [];
+  }
+}
+
+// One outstanding escalation at a time (the engine blocks inside escalate),
+// so the pending one is the last unanswered escalation in the visible tail.
+function pendingEscalation(runId, st) {
+  let lastOpen = null;
+  for (const ev of st.buffer) {
+    if (ev.kind !== "escalation") continue;
+    if (ev.op === "resolved") lastOpen = null;
+    else lastOpen = ev;
+  }
+  if (!lastOpen) return null;
+  const answered = readLiveAnswersFile(path.join(WORKFLOW_RUNS_DIR, runId)).some(
+    (a) => a.topic && lastOpen.topic && a.topic === lastOpen.topic
+  );
+  return answered ? null : { question: lastOpen.question, topic: lastOpen.topic, evidence: lastOpen.evidence };
+}
+
+function setupState() {
+  const r = readRoster();
+  const roster = r.ok ? r.roster : null;
+  const env = envFile();
+  const steps = [];
+
+  steps.push({
+    id: "roster",
+    label: "A roster naming your providers",
+    done: r.ok,
+    detail: r.ok ? ROSTER_PATH : String(r.error ?? "no roster"),
+    hint: r.ok ? null : "run `kit quickstart` in a terminal (or `kit init --template`), then refresh",
+  });
+
+  const wanted = [];
+  if (roster) {
+    for (const [, p] of Object.entries(roster.providers ?? {})) {
+      if (p.apiKeyEnv) wanted.push({ name: p.apiKeyEnv, what: p.providerName ?? "provider" });
+    }
+    if (roster.typesafe?.apiKeyEnv) wanted.push({ name: roster.typesafe.apiKeyEnv, what: "the judge (Jev)" });
+    if (roster.judge?.fastino?.apiKeyEnv) wanted.push({ name: roster.judge.fastino.apiKeyEnv, what: "the sys1 judge" });
+  }
+  const missing = wanted.filter((w) => !env[w.name]);
+  steps.push({
+    id: "keys",
+    label: "Provider keys in the runtime .env",
+    done: Boolean(roster) && missing.length === 0,
+    detail: missing.length ? `waiting on ${missing.map((m) => m.name).join(", ")}` : roster ? `all ${wanted.length} resolve` : "waiting on the roster",
+    hint: missing.length ? "paste them below — they stay in the local .env (chmod 600) and are never sent anywhere but the provider" : null,
+  });
+
+  const tierNames = roster ? Object.keys(roster.tiers ?? {}) : [];
+  const usable = Object.keys(R.workloads ?? {}).length;
+  steps.push({
+    id: "tiers",
+    label: "At least one tier routes end to end",
+    done: usable > 0,
+    detail: `${usable}/${tierNames.length} tiers usable`,
+    hint: usable === 0 ? "a tier needs a provider whose key resolves — add the key above, or edit the roster" : null,
+  });
+
+  const judgeMode = roster?.judge?.mode ?? "typesafe";
+  const judge = { id: "judge", label: "The judge can decide", done: false, detail: "", hint: null };
+  if (judgeMode === "typesafe") {
+    judge.done = Boolean(typesafeKey());
+    judge.detail = judge.done ? `Jev (${config.typesafeModel ?? "default"}) — key present` : "TYPESAFE_API_KEY missing";
+    judge.hint = judge.done ? null : "without it every request degrades to the default workload — paste the key below";
+  } else {
+    const base = (roster?.judge?.fastino?.baseUrl ?? "http://127.0.0.1:8400").replace(/\/+$/, "");
+    judge.detail = `${judgeMode} via ${base}`;
+    judge.hint = `the judge fails open to the default workload while ${base} is down`;
+  }
+  steps.push(judge);
+
+  const calls = usage.snapshot().totals.calls;
+  steps.push({
+    id: "first-request",
+    label: "First request routed",
+    done: calls > 0,
+    detail: calls ? `${calls} request${calls === 1 ? "" : "s"} served so far` : "no requests yet",
+    hint: calls ? null : "open the chat and say hello — that is the whole test",
+  });
+
+  if (judgeMode !== "typesafe") {
+    // Checked last and asynchronously: a slow decision service must slow the
+    // checklist, not block it.
+    const base = (roster?.judge?.fastino?.baseUrl ?? "http://127.0.0.1:8400").replace(/\/+$/, "");
+    return fetch(`${base}/healthz`, { signal: AbortSignal.timeout(1500) })
+      .then((resp) => {
+        judge.done = resp.ok;
+        judge.detail += resp.ok ? " — reachable" : ` — answering HTTP ${resp.status}`;
+      })
+      .catch(() => {
+        judge.done = false;
+        judge.detail += " — unreachable";
+      })
+      .then(() => ({ ok: true, ready: steps.every((s) => s.done), steps, port: config.port }));
+  }
+  return Promise.resolve({ ok: true, ready: steps.every((s) => s.done), steps, port: config.port });
+}
+
+function agentsState() {
+  const now = Date.now();
+  const apps = new Map();
+  apps.set("operator", { name: "operator", kind: "operator", label: "You (the operator token)", grants: null, workdir: null, runs: [] });
+  for (const a of Array.isArray(config.apps) ? config.apps : []) {
+    apps.set(a.name, {
+      name: a.name,
+      kind: "app",
+      label: `Connected via app token`,
+      grants: Array.isArray(a.grantCeiling) ? a.grantCeiling : [],
+      workdir: a.workdir ? expand(String(a.workdir)) : null,
+      runs: [],
+    });
+  }
+  const attention = [];
+  for (const snap of wfRunsSnapshot()) {
+    const st = wfRuns.get(snap.runId);
+    if (!st) continue;
+    const app = runApp(snap.runId) ?? "unknown";
+    if (!apps.has(app)) {
+      apps.set(app, { name: app, kind: "app", label: "Seen in run journals (app not in the current roster)", grants: [], workdir: null, runs: [] });
+    }
+    const pending = pendingEscalation(snap.runId, st);
+    const row = {
+      runId: snap.runId,
+      workflow: snap.name,
+      active: snap.active,
+      lastEventAgeMs: snap.lastEventAgeMs,
+      events: snap.events,
+      summary: snap.summary,
+      pending,
+    };
+    apps.get(app).runs.push(row);
+    if (pending) attention.push({ app, ...pending, runId: snap.runId, workflow: snap.name });
+  }
+  for (const a of apps.values()) {
+    a.liveRuns = a.runs.filter((r) => r.active).length;
+    a.lastActivityMs = a.runs.length ? Math.min(...a.runs.map((r) => r.lastEventAgeMs)) : null;
+  }
+  return {
+    ok: true,
+    generatedAt: now,
+    agents: [...apps.values()].sort((x, y) => (x.kind === y.kind ? x.name.localeCompare(y.name) : x.kind === "operator" ? -1 : 1)),
+    attention: attention.sort((x, y) => x.lastEventAgeMs - y.lastEventAgeMs),
+  };
+}
+
 function wfStart() {
   wfTick();
   setInterval(wfTick, 1000).unref();
@@ -1382,15 +1623,15 @@ const server = http.createServer((req, res) => {
       res.end(JSON.stringify({ ok: true }));
       return;
     }
-    // The dashboard shell carries no secrets in its static form, but the
-    // served page is stamped with the current local token: same-origin
-    // operator convenience (web pages cannot read the cross-origin response;
-    // local processes can read config.json anyway), while the proxy routes
-    // keep their token gate. The page prefers the injected token over stale
+    // The page shells carry no secrets in their static form, but the served
+    // page is stamped with the current local token: same-origin operator
+    // convenience (web pages cannot read the cross-origin response; local
+    // processes can read config.json anyway), while the proxy routes keep
+    // their token gate. The pages prefer the injected token over stale
     // localStorage, so a wrong saved value self-heals on reload.
-    if (req.method === "GET" && (req.url === "/dashboard" || req.url === "/dashboard/")) {
+    const servePage = (file, missing) => {
       try {
-        const html = fs.readFileSync(DASHBOARD_FILE, "utf8");
+        const html = fs.readFileSync(file, "utf8");
         const stamped = html.replace(
           'const INJECTED_TOKEN = "";',
           `const INJECTED_TOKEN = ${JSON.stringify(config.localToken)};`
@@ -1399,8 +1640,23 @@ const server = http.createServer((req, res) => {
         res.end(stamped);
       } catch {
         res.writeHead(404, { "Content-Type": "text/plain" });
-        res.end("dashboard.html missing — run `kit apply` to install the router runtime");
+        res.end(missing);
       }
+    };
+    // Pages match on the pathname, not the whole url: /chat?demo=1 is the
+    // chat page, and a query string must never route a shell into the
+    // bearer gate below.
+    const pagePath = req.url.split("?")[0];
+    if (req.method === "GET" && (pagePath === "/dashboard" || pagePath === "/dashboard/")) {
+      servePage(DASHBOARD_FILE, "dashboard.html missing — run `kit apply` to install the router runtime");
+      return;
+    }
+    if (req.method === "GET" && (pagePath === "/setup" || pagePath === "/setup/")) {
+      servePage(SETUP_FILE, "setup.html missing — run `kit apply` to install the router runtime");
+      return;
+    }
+    if (req.method === "GET" && (pagePath === "/chat" || pagePath === "/chat/" || pagePath === "/")) {
+      servePage(CHAT_FILE, "chat.html missing — run `kit apply` to install the router runtime");
       return;
     }
     // Workflow run stream. EventSource cannot set an Authorization header, so
@@ -1632,6 +1888,11 @@ const server = http.createServer((req, res) => {
         grants: body?.grants,
         allowCommands: body?.allowCommands,
         netDomains: body?.allowDomains,
+        // The owner-wait channel: opt in per spawn with awaitOwnerMs (capped
+        // at a day) and an unanswered escalation holds the run open while the
+        // human answers through /v1/runs/<id>/answers. Default stays 0 —
+        // today's degrade-fast behavior — so existing callers change nothing.
+        awaitOwnerMs: Math.min(Math.max(Number(body?.awaitOwnerMs) || 0, 0), 86_400_000),
         // The search backend's key resolves from this server's env file at the
         // boundary; the plane sees only the declared name's value.
         search: {
@@ -1763,6 +2024,15 @@ const server = http.createServer((req, res) => {
         res.writeHead(code, { "Content-Type": "application/json", "Cache-Control": "no-store" });
         res.end(JSON.stringify(obj));
       };
+      // The control plane is operator-class, full stop: these routes rewrite
+      // the roster (and re-run apply), read the ledger, and answer runs. An
+      // app token used to pass on validity alone — one with an empty
+      // grantCeiling could have rewritten the roster from the browser.
+      // Everything an app legitimately needs lives under /v1, scoped there.
+      if (!caller.operator) {
+        jsonOut(403, { ok: false, error: "this surface needs the operator token — apps act through /v1" });
+        return;
+      }
       if (req.method === "GET" && req.url === "/api/state") {
         const r = readRoster();
         const roster = r.ok ? r.roster : null;
@@ -1784,6 +2054,11 @@ const server = http.createServer((req, res) => {
             wideModel: R.wideModel ?? null,
             mixture: R.mixture ?? null,
             profiles: R.profiles ?? {},
+            // The workflow registry the judge routes into, plus the full
+            // catalog — the surfaces that start runs list what can be started
+            // rather than making the user guess names.
+            workflows: R.workflows ?? {},
+            workflowLibrary: Array.isArray(config.workflowLibrary) ? config.workflowLibrary : [],
             thresholds: {
               wideChars: R.wideChars ?? null,
               minConfidence: R.minConfidence ?? null,
@@ -1918,6 +2193,52 @@ const server = http.createServer((req, res) => {
         }
         const result = await applyRoster(candidate);
         jsonOut(result.ok ? 200 : 409, { ok: result.ok, output: result.output, restartRecommended: result.restartRecommended });
+        return;
+      }
+      // Key entry from the browser: write-only by contract. The request may
+      // carry secrets; the response never reflects them — only whether each
+      // name resolves after the write. Same file, mode and merge rules as
+      // `kit env set` (writeEnvPairs above).
+      if (req.method === "POST" && req.url === "/api/keys") {
+        let body;
+        try {
+          body = JSON.parse(raw || "");
+        } catch {
+          jsonOut(400, { ok: false, error: "body is not valid JSON" });
+          return;
+        }
+        const pairs = body?.keys;
+        if (!pairs || typeof pairs !== "object" || Array.isArray(pairs)) {
+          jsonOut(400, { ok: false, error: 'send {"keys": {"NAME": "value"}} — names are env-var names from the roster' });
+          return;
+        }
+        const clean = {};
+        for (const [k, v] of Object.entries(pairs)) {
+          if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) {
+            jsonOut(400, { ok: false, error: `not a valid env name: ${k}` });
+            return;
+          }
+          if (typeof v !== "string" || !v.trim()) {
+            jsonOut(400, { ok: false, error: `empty value for ${k}` });
+            return;
+          }
+          clean[k] = v.trim();
+        }
+        const r = writeEnvPairs(clean);
+        jsonOut(r.ok ? 200 : 500, r.ok ? { ok: true, configured: r.configured } : { ok: false, error: r.error });
+        return;
+      }
+      // The guided-setup checklist, computed here so the page cannot drift
+      // from the router's own truth. Order is the order a new user meets the
+      // problems; `next` names the first thing to fix.
+      if (req.method === "GET" && req.url === "/api/setup") {
+        setupState().then((s) => jsonOut(200, s));
+        return;
+      }
+      // The agent control plane: every token holder the router knows about,
+      // what each is running right now, and which runs are waiting on a human.
+      if (req.method === "GET" && req.url === "/api/agents") {
+        jsonOut(200, agentsState());
         return;
       }
       if (req.method === "GET" && req.url === "/api/workflow-runs") {

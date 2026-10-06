@@ -102,19 +102,22 @@ There is no database. Five kinds of state:
 
 ## 5. Router API Reference
 
-OpenAI-compatible, loopback-only, on `127.0.0.1:8300` (roster `router.port`). All endpoints except `/healthz` and the dashboard page require `Authorization: Bearer <localToken>` (default `local-auto-router`).
+OpenAI-compatible, loopback-only, on `127.0.0.1:8300` (roster `router.port`). All endpoints except `/healthz` and the page shells require `Authorization: Bearer <localToken>` (default `local-auto-router`). The `/api/` block additionally requires the **operator** token class — an app token (a roster `router.apps` row) gets 403 there and acts through `/v1` only, scoped by its ceiling, workspace and run ownership.
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/healthz` | liveness (no auth) |
+| GET | `/` , `/chat`, `/setup`, `/dashboard` | page shells (local token injected; `/chat` is the chat + agent control plane, `/setup` the guided setup) |
 | GET | `/v1/models` | models the router exposes |
 | POST | `/v1/chat/completions` | the routing endpoint (streaming supported; tool calls supported) |
 | POST | `/route` (`/v1/route`) | verdict only — workload/execution/workflow assignments, no model call |
-| GET | `/dashboard` | dashboard page (local token injected) |
-| GET | `/api/state`, `/api/usage`, `/api/suggest`, `/api/roster` | dashboard data: live state, ledger, distribution suggestions, effective roster |
+| GET | `/api/state`, `/api/usage`, `/api/suggest`, `/api/roster` | dashboard data: live state (now including the workflow registry + catalog), ledger, distribution suggestions, effective roster |
 | PUT | `/api/roster` | dashboard saves an edited roster → the kit's apply path |
 | POST | `/api/usage/reset` | clear the ledger |
-| POST | `/v1/runs` | **run API**: spawn a workflow run (operator or app token; grants validated against the caller's ceiling; the journal records the caller) |
+| POST | `/api/keys` | **operator, write-only**: `{"keys": {NAME: value}}` merges into the runtime `.env` (mode 600, comments preserved); the response carries `configured` booleans and never a value |
+| GET | `/api/setup` | the readiness checklist the `/setup` page renders — roster, keys, tiers, judge (live sys1 probe in non-typesafe modes), first request — computed server-side as `{steps, ready}` |
+| GET | `/api/agents` | the agent control plane: every token holder with its ceiling and workspace, runs attributed from the journals, and `attention` — escalations open right now |
+| POST | `/v1/runs` | **run API**: spawn a workflow run (operator or app token; grants validated against the caller's ceiling; the journal records the caller; optional `awaitOwnerMs` holds open escalations for an in-the-moment answer, capped at 24h, default 0) |
 | POST | `/v1/runs/<id>/answers` | **run API**: answer a live escalation by topic (the spawning app or the operator) |
 | GET | `/v1/runs/<id>/artifacts` | **run API**: a run's artifact index; `?file=` downloads inside the run directory |
 

@@ -26,3 +26,6 @@ router/package-lock.json
 docs/architecture/*.finalize*.json
 docs/architecture/*.delivery.json
 docs/architecture/*.browser-check.json
+
+# electron build output
+app/dist/

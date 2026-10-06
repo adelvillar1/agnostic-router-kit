@@ -44,6 +44,9 @@ Two token classes behind one gate is the whole security model. Everything else i
 | Suggester | `router/suggest.mjs` | model ranking: measured latency/errors, declared context, quota headroom, `strength` |
 | Mixture of agents | `router/swarm.mjs` | parallel proposers, best answer judged by TypeSafe |
 | Dashboard | `router/dashboard.html` | usage, app grants, delegation editor; saves through the same kit CLI |
+| Chat + control plane | `router/chat.html` | chat with the router (`model: auto`, verdict per reply) beside the agent rail: every token holder, live runs, open escalations answerable in place |
+| Guided setup | `router/setup.html` + `/api/setup` · `/api/keys` | the readiness checklist the router computes, write-only browser key entry, connect-an-agent |
+| Desktop shell | `app/main.mjs` (Electron) | preflight (kit found, deps, quickstart), attaches to a healthy service or owns the router as a child, opens `/chat` |
 | Service | `lib/service.mjs` | launchd (macOS) / systemd (Linux) user unit with keepalive |
 | Workflow plane | `lib/workflow/` (13 modules, resolved as a `file:` package) | the harnessed agent control plane: run state, judging and gates, tool grants and the world, transport, event journal and graph |
 
@@ -64,7 +67,7 @@ ZCode (or any OpenAI-compatible client) sends `POST /v1/chat/completions` with `
 2. **Spawn gate**: the grant ceiling and the workspace root are checked against the caller; a refusal is a 403 that names which one, then the run never starts.
 3. **Plane**: `runWorkflow` resolves grants and facts, transforms the module, and binds the API surface as globals (`args, agent, log, phase, report, escalate, artifact, files, git, world, sys1`).
 4. **Loop**: phases call agents, which call back through `127.0.0.1:8300` with the operator token — so steering, failover, and the mixture still apply inside a workflow.
-5. **Escalation**: an unknown fact escalates through declared answers → live `answers.jsonl` → question-substring match → `askOwner` → a recorded "no owner" answer; the resolving source is journalled.
+5. **Escalation**: an unknown fact escalates through declared answers → live `answers.jsonl` → question-substring match → the owner wait (`awaitOwnerMs`, when the spawner opted in — the run holds and the question appears in the chat's attention lane) → `askOwner` → a recorded "no owner" answer; the resolving source is journalled.
 6. **Settlement**: `run.jsonl` holds every event; `summary.json` and the artifacts close the run and emit `run-done` / `run-failed`.
 
 ## Design invariants

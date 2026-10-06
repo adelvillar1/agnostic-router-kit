@@ -9,7 +9,7 @@
     "kit": "bin/agnostic-router-kit.mjs"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "dependencies": {
     "workflow-plane": "file:lib/workflow"
