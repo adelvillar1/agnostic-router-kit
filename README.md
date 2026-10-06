@@ -35,12 +35,26 @@ to the runtime beside the router and it is imported by the shipped server, so a 
 drift from the engine. The ZCode edition (`zcode-router-kit`) is one of its consumers: it resolves the plane from here
 as a `file:` dependency rather than copying it.
 
+Three diagrams, generated from candidates that cite the code: a map of the machine and two process views. The stills
+below are light-theme renders; the interactive versions carry the file and line behind every node and edge.
+
 <p align="center">
-  <a href="docs/architecture/system-overview.html">The system overview, interactive</a> — every component, boundary,
-  and connection with the file and lines that make it true. Then the two process views:
-  <a href="docs/architecture/run-lifecycle.html">the run lifecycle</a> — spawn, phases, escalation, settlement — and
-  <a href="docs/architecture/deep-research-loop.html">the deep-research loop</a> — the credit meter, the sys1 judge
-  head, and the stop reasons. Text reference: <a href="docs/architecture/overview.md">docs/architecture/overview.md</a>.
+  <a href="docs/architecture/system-overview.html"><img src="docs/architecture/system-overview.png" alt="System overview: an OpenAI-compatible client and an app caller both reach one bearer gate; the judge picks a workload, an execution style and a workflow; the tier chain walk picks the upstream provider and every attempt lands in the usage ledger; the run API spawns the workflow plane, which journals every event into run.jsonl and writes artifacts" /></a><br>
+  <sub><b>System overview</b> — every component, boundary and connection ·
+  <a href="docs/architecture/system-overview.html">interactive</a> ·
+  <a href="docs/architecture/overview.md">text</a></sub>
+</p>
+
+<p align="center">
+  <a href="docs/architecture/run-lifecycle.html"><img src="docs/architecture/run-lifecycle.png" alt="Run lifecycle: a spawn request passes the ceiling, root and owner gates; the workflow runs phase by phase; questions escalate through the ranked ladder to the owner and the answer returns to the run; the run settles with a summary and artifacts, every event in the journal" /></a><br>
+  <sub><b>Run lifecycle</b> — spawn, phases, escalation, settlement ·
+  <a href="docs/architecture/run-lifecycle.html">interactive</a></sub>
+</p>
+
+<p align="center">
+  <a href="docs/architecture/deep-research-loop.html"><img src="docs/architecture/deep-research-loop.png" alt="Deep-research loop: plan, search, read, judge and report, with the search credit meter bounding the reads, the sys1 judge head scoring each row keep-or-drop, and the stop reasons that end a run early" /></a><br>
+  <sub><b>Deep-research loop</b> — the credit meter, the sys1 judge head, the stop reasons ·
+  <a href="docs/architecture/deep-research-loop.html">interactive</a></sub>
 </p>
 
 ## What you get
@@ -227,7 +241,7 @@ lib/workflow/                the plane: 14 modules — engine, runstate, checkpo
 router/                      the proxy: server.js, quota, usage, suggest, swarm, fastino (sys1), dashboard
 workflows/                   the loop library + the one-pass workflows (.ts, runnable on the plane)
 tools/                       probe-run-api.mjs (contract probe, zero model calls), compare-journals.py
-docs/architecture/           the interactive diagrams + overview.md
+docs/architecture/           the interactive diagrams + overview.md, their light-theme stills, and the script that renders them
 docs/features/               per-feature records
 docs/plans/                  plan-as-contracts
 docs/recaps/                 session recaps

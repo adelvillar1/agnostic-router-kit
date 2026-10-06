@@ -67,14 +67,21 @@ Full request lifecycle: `docs/features/judge-delegation.md` (ported in the ZCode
 beside it; every node and edge in a candidate carries a `sources` entry naming the file and lines that make it true, and
 the run receipts (`.finalize*.json`, `.browser-check.json`, `.delivery.json`) are gitignored byproducts.
 
-| Diagram | Type | Candidate | Render |
-|---------|------|-----------|--------|
-| System overview | architecture | [`docs/architecture/system-overview.candidate.json`](architecture/system-overview.candidate.json) | [`system-overview.html`](architecture/system-overview.html) |
-| Run lifecycle | workflow | [`docs/architecture/run-lifecycle.candidate.json`](architecture/run-lifecycle.candidate.json) | [`run-lifecycle.html`](architecture/run-lifecycle.html) |
-| Deep-research loop | workflow | [`docs/architecture/deep-research-loop.candidate.json`](architecture/deep-research-loop.candidate.json) | [`deep-research-loop.html`](architecture/deep-research-loop.html) |
+| Diagram | Type | Candidate | Render | README still |
+|---------|------|-----------|--------|--------------|
+| System overview | architecture | [`system-overview.candidate.json`](architecture/system-overview.candidate.json) | [`system-overview.html`](architecture/system-overview.html) | [`system-overview.png`](architecture/system-overview.png) |
+| Run lifecycle | workflow | [`run-lifecycle.candidate.json`](architecture/run-lifecycle.candidate.json) | [`run-lifecycle.html`](architecture/run-lifecycle.html) | [`run-lifecycle.png`](architecture/run-lifecycle.png) |
+| Deep-research loop | workflow | [`deep-research-loop.candidate.json`](architecture/deep-research-loop.candidate.json) | [`deep-research-loop.html`](architecture/deep-research-loop.html) | [`deep-research-loop.png`](architecture/deep-research-loop.png) |
 
 Regenerate with the archify CLI (`finalize <type> <candidate.json> <output.html> --repo-root . --quality showcase`).
 The text companion is [`docs/architecture/overview.md`](architecture/overview.md).
+
+The README embeds the `.png` stills because GitHub renders images, not HTML. `render-png.mjs` makes them: it takes the
+diagram's own inline SVG, drops it into a page carrying the viewer's font and theme CSS with the light palette forced,
+lays it out at exactly its viewBox size and rasterises it at 2x with headless Chrome — no scaling, reflow or crop, so a
+still is the diagram at its declared layout size. `node docs/architecture/render-png.mjs` renders every diagram,
+`--check` verifies the committed stills against their viewBoxes and writes nothing. Chrome's binary defaults to the
+macOS path; override with `CHROME=<path>`.
 
 Two older static drawings predate the set and are not part of it: `docs/img/request-lifecycle.svg` (the request path)
 and `docs/img/quota.svg` (the quota flow), both embedded in `router/README.md`.
