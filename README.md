@@ -1,104 +1,261 @@
 # agnostic-router-kit
 
-A local, harness-agnostic model router. Point any OpenAI-compatible client at
-`http://127.0.0.1:8300/v1` and it gains one extra model id — `auto` — that
-routes each request to the right upstream plan by workload, judged per task,
-with quota-aware failover and every token metered.
+A local, harness-neutral model router **and the workflow plane it runs**. This repo is the engine edition: it owns the
+plane (`lib/workflow/`) and the proxy that serves it, and it depends on no harness anywhere.
 
-No harness is required, none is referenced, none is read. The router knows
-your roster and nothing else.
+Point any OpenAI-compatible client at `http://127.0.0.1:8300/v1` and it gains one extra model id — `auto` — that routes
+each request to the right upstream plan by workload, judged per task, with quota-aware failover and every token metered.
+Point a caller at the run API and it gains a journaled agent run: outcomes, phases, paths, escalations, artifacts.
 
-## What it does
+No harness is required, none is read, and nothing about one is assumed. The router knows your roster and nothing else.
 
-- **Routes by workload.** One judgment per task (cheap encoder via
-  [sys1](https://github.com/adelvillar1/sys1)'s decide provider, or TypeSafe
-  Jev, or cascade = sys1 first, Jev escalates on low confidence) picks one of
-  your tiers — `quick`, `standard_code`, `hard`, `prose`, `deep_context` —
-  each mapped to a provider/model with a fallback chain.
-- **Respects plans.** Quota-aware steering walks the tier's candidate chain,
-  records every attempt in a usage ledger, and never fails a request: judge
-  outages, missing keys, and exhausted quotas degrade to the next candidate.
-- **Mixture for the hard stuff.** Named profiles fan out to parallel
-  proposers and merge with a best-answer judgment.
-- **Dashboard.** The router serves its own dashboard at `/dashboard` — roster
-  editing, ledger, tier status, judge behavior, save-and-apply.
+```
+roster.json ──kit apply──┬── ~/.agnostic-router-kit/router/config.json    tier table, judge mode, app rows and ceilings
+                         ├── ~/.agnostic-router-kit/router/               the service's copy of the proxy
+                         ├── ~/.agnostic-router-kit/router/.env           env-var NAMES only; values stay local (chmod 600)
+                         └── ~/.agnostic-router-kit/workflow-runs/<id>/  run.jsonl, summary.json, artifacts/
 
-## Quickstart
+OpenAI-compatible client ──► one bearer gate ──► judge (workload · execution · workflow · followUp) ──► tier chain walk
+                                                      │
+App caller (run API) ──► same gate ──► spawn gate (ceiling · root · owner) ──► workflow plane ──► run.jsonl + artifacts
+```
+
+Requires Node ≥ 20 and one `npm install` at the root: the kit's only dependency is the plane itself, resolved as a
+`file:` package (`node_modules/workflow-plane` → `lib/workflow`), and the CLI imports it by that specifier, so a fresh
+clone links it before anything runs. The plane declares `engines.node: ">=20"`, so the whole kit inherits that floor.
+The router has one more dependency, `@typesafe-ai/sdk` — the judge that picks the workload, the execution style, and
+the workflow for every `auto` request. It is needed in the runtime dir (`~/.agnostic-router-kit/router/`), and
+`kit apply` ships the kit's own install of it there, so the repo-side step is one `npm install --omit=dev` in
+`router/` per clone. `kit apply` and `kit doctor` both report it when the runtime is missing it; the fix is the same
+command run in the runtime dir.
+
+**The workflow plane lives in this repo**, in `lib/workflow/` — 14 modules, zero runtime deps: run state and
+checkpoints, judging and gates, tool grants and the world, transport, the event journal and the session graph. It ships
+to the runtime beside the router and it is imported by the shipped server, so a kit installed from this checkout cannot
+drift from the engine. The ZCode edition (`zcode-router-kit`) is one of its consumers: it resolves the plane from here
+as a `file:` dependency rather than copying it.
+
+<p align="center">
+  <a href="docs/architecture/system-overview.html">The system overview, interactive</a> — every component, boundary,
+  and connection with the file and lines that make it true. Then the two process views:
+  <a href="docs/architecture/run-lifecycle.html">the run lifecycle</a> — spawn, phases, escalation, settlement — and
+  <a href="docs/architecture/deep-research-loop.html">the deep-research loop</a> — the credit meter, the sys1 judge
+  head, and the stop reasons. Text reference: <a href="docs/architecture/overview.md">docs/architecture/overview.md</a>.
+</p>
+
+## What you get
+
+- **Routes by workload.** One judgment per task — the sys1 decide provider (a
+  [sys1](https://github.com/adelvillar1/sys1) decision service on `127.0.0.1:8400`), TypeSafe Jev, or cascade (sys1
+  first, Jev escalates on low confidence) — picks one of your tiers: `quick`, `standard_code`, `hard`, `prose`,
+  `deep_context`, each mapped to a provider/model with an ordered fallback chain.
+- **Respects plans.** Quota-aware steering walks the tier's candidate chain, records every attempt in a usage ledger,
+  and never fails a request: judge outages, missing keys, and exhausted quotas degrade to the next candidate, tagged
+  in the log and in response headers.
+- **Mixture for the hard stuff.** Named profiles fan out to parallel proposers and merge with a best-answer judgment.
+- **A workflow plane, journaled.** Runs decompose a task into phases, call agents that use real tools under declared
+  grants, escalate questions to a named owner, and write artifacts — every event in `run.jsonl`, every judgment in a
+  calibration store.
+- **The run API.** `POST /v1/runs` starts a run for an app token, `POST /v1/runs/<id>/answers` answers its escalations
+  live, `GET /v1/runs/<id>/artifacts` reads what it produced. Ownership is re-derived from the journal, so a restart
+  never reopens the door.
+- **A loop library.** Seven loop shapes over the plane — deep-research, remediate, triage, refine-loop, red-team,
+  watchdog, router-eval — plus the one-pass workflows they were built from. Flat judgments ride the sys1 judge layer;
+  the LLM agents do generation only.
+- **Dashboard.** The router serves its own dashboard at `/dashboard` — the usage ledger, provider enable/disable,
+  quota status, the delegation and workflow assignment view, live run activity, and a Save & apply button that writes
+  the roster and re-renders it in place.
+
+## New-machine quickstart
 
 ```bash
-# 1. run sys1 (decision service on 127.0.0.1:8400) — or set judge.mode=typesafe
-#    https://github.com/adelvillar1/sys1
-git clone https://github.com/adelvillar1/sys1 && cd sys1 && ...   # see its README
+git clone git@github.com:adelvillar1/agnostic-router-kit.git && cd agnostic-router-kit
 
-# 2. install this kit
-git clone <this repo> && cd agnostic-router-kit
-(cd router && npm install --omit=dev)          # @typesafe-ai/sdk, the judge client
+# 0. sys1, the decision service on 127.0.0.1:8400 — or skip it and set judge.mode=typesafe
+#    git clone https://github.com/adelvillar1/sys1 && cd sys1 && ...   # see its README
 
-# 3. roster + keys
-npm run kit -- init --template                 # writes roster.json to edit
-vim roster.json                                # your plans, tiers, fallbacks
-npm run kit -- env set STEPFUN_API_KEY=… TYPESAFE_API_KEY=… ZAI_CODING_API_KEY=…
+# 0b. the kit's one link — the root package resolves workflow-plane as a file: dep on lib/workflow
+npm install                                     # node_modules/workflow-plane → lib/workflow; the CLI imports it by that specifier
 
-# 4. apply
-npm run kit -- apply --dry-run
-npm run kit -- apply
-npm run kit -- doctor                          # sys1, tiers, keys, service — green?
+# 1. a roster to edit — the documented template, or a copy of a live machine's
+node bin/agnostic-router-kit.mjs init --template      # or: kit init   (on the source machine, then commit roster.json)
 
-# 5. point a client at the router
+# 2. the keys this machine has (names come from the roster)
+node bin/agnostic-router-kit.mjs env set STEPFUN_API_KEY=… TYPESAFE_API_KEY=… ZAI_CODING_API_KEY=…
+
+# 3. render + install everything, then check it
+#    the router's one dependency, so kit apply can ship it to the runtime dir
+(cd router && npm install --omit=dev)               # once per clone
+node bin/agnostic-router-kit.mjs apply --dry-run      # see exactly what would change
+node bin/agnostic-router-kit.mjs apply
+node bin/agnostic-router-kit.mjs doctor               # --live also probes each provider; green or it didn't happen
+
+# 4. point a client at the router
 curl http://127.0.0.1:8300/v1/chat/completions \
   -H "Authorization: Bearer local-auto-router" \
   -H "Content-Type: application/json" \
   -d '{"model":"auto","messages":[{"role":"user","content":"say hi"}]}'
+
+# 5. run a workflow on the plane, on the spot
+node bin/agnostic-router-kit.mjs workflows run deep-research --args '{"topic":"…"}' --grant net-search
 ```
 
-`model` accepts `auto`, any profile name in the roster (`quick`, `code`,
-`hard`, `prose`, `long-context`, `vision`, `mixture`, `deep`, `bulk`), or a
-literal `providerId/modelId` target.
+`model` accepts `auto`, any profile name in the roster (`quick`, `code`, `hard`, `prose`, `long-context`, `vision`,
+`mixture`, `deep`, `bulk`), or a literal `providerId/modelId` target. The default operator token is the roster's
+`router.localToken`; app callers use their own row token.
+
+## Everyday use
+
+```bash
+kit status                 # what's installed, which tiers resolved, router health, remaps
+kit doctor [--live]        # full verification of the whole chain; changes nothing
+kit workflows list         # the library, its install state, and router-assignability per workflow
+kit workflows run <name>   # run a workflow on the plane, on the spot (--args, --answers, --grant)
+kit workflows watch [id]   # tail a run's journal
+kit workflows graph [--dot|--archify out.json]   # the session graph: plans, criteria, phases, runs
+kit route "audit the docs tree for staleness"    # ask the running router for its verdict
+kit apply [--only router|service]                # render + install + restart + health-check (idempotent)
+kit upgrade                # git pull + apply
+open http://127.0.0.1:8300/dashboard             # usage ledger, providers, quota, delegation, live run activity
+```
+
+`kit workflows run` takes a workflow file — a `.ts` beside the library or a direct path — answers its questions with
+`--answers`, grants capabilities with `--grant`, and journals every event for `watch` / `graph`. `graph --archify` hands
+the result to archify, the tool that drew the diagrams above.
+
+## Configuring the roster
+
+`roster.json` is the machine's description; `kit apply` renders it and everything under `~/.agnostic-router-kit/` is
+generated. Commit the roster — it holds env-var *names*, never values — and let `kit env` manage the values.
+
+- **providers** — `providerName`, `baseUrl`, `apiKeyEnv` (the variable's name), `models[]` (the picker's list),
+  optional `billing`, `featured[]`, `routerOnly`, `quota`, `contextWindow`. Per-model strength lives at the top level
+  under `strength`.
+- **tiers** — an ordered candidate chain per workload tier. The chain walk is quota-aware: a candidate that is cool
+  ing down, over its allowance, or lacking a key is skipped and the skip is journalled.
+- **profiles** — named routing decisions on top of the judge: pin a tier, force mixture on a profile name, or route a
+  literal target.
+- **router.apps** — the second token class (see below): `token`, `grantCeiling`, `workdir`/workspace root.
+- **judge** — `mode: typesafe | fastino | cascade`, plus the sys1 endpoint and model settings.
+- **search / scrape** — the run's search backend and the operator's self-hosted Firecrawl (`FIRECRAWL_SCRAPE_URL`),
+  which is where page reading happens: free, bounded, and off the cloud bill.
+
+`templates/roster.defaults.json` documents every field with its default.
+
+## How the router decides
+
+One `POST /v1/chat/completions` with `model: "auto"`:
+
+1. **Capability rules** (always win): images → `omniModel`; length > `wideChars` → `wideModel`.
+2. **Judgment cache**: hash of system-prompt head + latest instruction; a hit reuses the verdict, so agentic loops keep
+   one verdict for a whole task.
+3. **Judge** (one verdict per task, fail-open): workload tier, execution style (`single` / `mixture`), first workflow,
+   optional follow-up. Fastino judges a batch in one call; cascade escalates to TypeSafe on low confidence. A judge
+   outage degrades to the default workload and the request is still served.
+4. **Execution**: a single call; or parallel proposers plus an integration judgment (mixture); or a delegate to a
+   workflow in the library.
+5. **Tier chain walk**: quota-aware candidate order; upstream `402/403/408/429/5xx` or a connection failure moves to the
+   next candidate and opens a cooldown bench.
+6. **Metering**: every attempt — won, diverted, lost — lands in the usage ledger; verdict headers ride the response.
+
+## The run API
+
+Three routes, all behind the same bearer gate:
+
+| Route | What it does |
+|-------|--------------|
+| `POST /v1/runs` | spawn a named workflow with args; returns the run id |
+| `POST /v1/runs/<id>/answers` | append a live answer row for an outstanding escalation, by topic |
+| `GET /v1/runs/<id>/artifacts` | list and read what the run produced, by artifact id |
+
+Ownership is re-derived from the journal's `run-start` line on every request, so the app that spawned a run is the only
+caller that can answer or read it — no interval, no session, no restart that loosens it. A refusal is a `403 out of
+bounds` that names the ceiling, the root, or the owner it enforced. See
+[`docs/features/run-api.md`](docs/features/run-api.md) and the interactive
+[run lifecycle](docs/architecture/run-lifecycle.html).
+
+## The workflow plane
+
+A workflow is a `.ts` module with some metadata. The plane reads it, declares its args, and runs it against a surface
+of globals: `args, agent, log, phase, report, escalate, artifact, files, git, world, sys1` — plus `checkpoint` and
+`rollback` where the loop keeps state between steps.
+
+- **Grants, not ambient power.** Every capability a run uses is declared at spawn and journalled against the call that
+  used it. Default-on: workspace io, the process allowlist, the test runner. Opt-in: package installs, net fetch, net
+  search, sub-agents. A missing grant refuses by name — `capability not granted in this run: net-search` — and the run
+  continues without it.
+- **The journal is the record.** `run.jsonl` holds phases, agent and tool calls, escalations and answers, commands with
+  their costs, checkpoints, and the closing `run-done` / `run-failed`. `summary.json` is the run's answer.
+- **Escalation has a ranked ladder.** Declared answers, then the live `answers.jsonl`, then a question-substring match,
+  then `askOwner`, then a recorded "no owner" answer — and the source that resolved it is journalled, so a run can be
+  explained later.
+- **Agents ride the router back.** The plane's model calls go through `127.0.0.1:8300` with the operator token, so
+  steering, failover, and the mixture still apply inside a workflow.
+- **Flat judgment is sys1's job.** A `sys1.judge(spec, text)` call answers one flat question — supported or
+  unconfirmed, keep or drop, class and confidence — with dev-decisions rows landing in the shared calibration store.
+  The LLM agents do generation only. See [`docs/features/loop-library.md`](docs/features/loop-library.md) and the
+  interactive [deep-research loop](docs/architecture/deep-research-loop.html).
+
+## Safety model
+
+- `kit apply` backs up what it overwrites before every write and refuses a config it does not understand.
+  `kit apply --dry-run` writes nothing and prints the planned diff.
+- **Two token classes, one bearer gate.** The operator token (`router.localToken`) may spawn anywhere and read
+  anything. App tokens are roster rows with a declared `grantCeiling` and a workspace root: a grant outside the ceiling
+  is a `403 out of bounds` journalled as `run-spawn-refused`, a workspace outside the app's root is refused by path, the
+  run executes inside its own sandbox, and the app can answer or read only the runs it spawned. A leaked app token
+  costs you its ceiling, not the machine.
+- **Keys live only in the runtime `.env`** (chmod 600, gitignored) and the environment. `roster.json` holds env-var
+  names; a raw `apiKey` in it is a warning at apply time. Search keys resolve at the wire, so neither the CLI nor the
+  workflows carry key material — a key-neutrality grep over `lib/` and `workflows/` returns 0.
+- **Router listens on `127.0.0.1` only.** All endpoints except `/healthz` and the dashboard page require a token.
+- **Fail-open everywhere above the HTTP layer.** Judge outage, missing key, low confidence, sys1 down → default
+  workload, tagged in the log, request still served. Degraded state is never silent: `status`, `apply`, and `doctor`
+  all report it.
+- **Destructive operations** (force-push, history rewrite, deleting runtime state under `~/.agnostic-router-kit/`) are
+  a human decision, not a CLI decision.
 
 ## Layout
 
 ```
-roster.json                  the machine: providers (keys by env name), tiers, profiles
+roster.json                  the machine: providers (keys by env name), tiers, profiles, app rows
 templates/roster.defaults.json   starter roster for `kit init --template`
 bin/agnostic-router-kit.mjs  the `kit` CLI
 lib/                         roster model + resolution, render, .env, service, CLI
-router/                      the proxy: server.js, quota, usage, judge (fastino/sys1), dashboard
-docs/                        diagrams
+lib/workflow/                the plane: 14 modules — engine, runstate, checkpoint, tools, services,
+                             transport, events, graph, harness, meta, schema, coerce, context, gitworld
+router/                      the proxy: server.js, quota, usage, suggest, swarm, fastino (sys1), dashboard
+workflows/                   the loop library + the one-pass workflows (.ts, runnable on the plane)
+tools/                       probe-run-api.mjs (contract probe, zero model calls), compare-journals.py
+docs/architecture/           the interactive diagrams + overview.md
+docs/features/               per-feature records
+docs/plans/                  plan-as-contracts
+docs/recaps/                 session recaps
 ```
 
-`kit apply` copies `router/` into the runtime dir (`~/.agnostic-router-kit/router/`)
-and renders `config.json` from the roster; a launchd/systemd user service keeps
-the runtime copy alive, so `git pull` + `kit upgrade` never moves the service.
+`kit apply` copies `router/` into the runtime dir and renders `config.json` from the roster; a launchd/systemd user
+service keeps the runtime copy alive, so `git pull` + `kit upgrade` never moves the service.
 
-## Commands
+## Known limits
 
-```
-kit status                 what's installed, tiers, health, remaps
-kit env set|list|unset     manage the runtime .env (chmod 600)
-kit apply [--dry-run]      render + install (--only router|service)
-kit doctor [--live]        verify the whole chain, change nothing
-kit route "task…"          ask the running router for its verdict
-kit upgrade                git pull + apply
-```
-
-## Security model
-
-- Router listens on `127.0.0.1` only. All endpoints except `/healthz` and the
-  dashboard page require the local token (`router.localToken` in the roster).
-- The run API adds app tokens: `router.apps` rows in the roster, each with its
-  own token, a grant ceiling its spawns are enforced against, and its own
-  workspace root. A token's blast radius is its ceiling.
-- Keys live only in the runtime `.env` (chmod 600, gitignored) and env
-  variables. `roster.json` holds env-var *names*, never values.
+- Routing is OpenAI chat-completions only.
+- The judgment adds ~1–3s to the first request of a task; subsequent requests in the same task are cache hits. A judge
+  outage degrades to the default workload — it never fails a request.
+- `kit` manages macOS launchd and Linux systemd user units; on other platforms it tells you how to run the router by
+  hand.
+- No artificial token limits anywhere; `routing.wideChars` only diverts oversized payloads to the wide-context model.
+- Scraping needs an operator-hosted Firecrawl (`FIRECRAWL_SCRAPE_URL`). Unset, enrichment skips by name and the run
+  proceeds on search rows — a configured absence, not a crash.
 
 ## Roadmap
 
-Shipped 2026-10-05/06: the run API (`POST /v1/runs`, live escalation answers,
-artifact retrieval — `docs/features/run-api.md`) and the loop library
-(`docs/features/loop-library.md`) — deep-research, remediate, triage,
-refine-loop, red-team, watchdog, router-eval — with flat judgments riding the
-sys1 judge layer and search credits budgeted in the workflow.
-Wave 2: portable workflow library (chat-only workflows + vendored skill trees,
-no absolute paths). Wave 3: proxy-internal swarm execution. Wave 4: swarm
-gates composed from dev-decisions. Next: an AG-UI rendering of the run event
-stream. See `docs/plans/`.
+Shipped 2026-10-05/06: the run API (`POST /v1/runs`, live escalation answers, artifact retrieval —
+[`docs/features/run-api.md`](docs/features/run-api.md)) and the loop library
+([`docs/features/loop-library.md`](docs/features/loop-library.md)) — deep-research, remediate, triage, refine-loop,
+red-team, watchdog, router-eval — with flat judgments riding the sys1 judge layer and search credits budgeted inside
+the workflow.
+
+Next, in the plans' own words: swarm execution on the wire (the run-API plan's wave 3); an AG-UI render of the run event
+stream, whose journal kinds already map onto its typed events; cross-process resume of failed runs and cross-run memory;
+Alexandria as a search backend behind the workflow's `backend` seam; raw sys1 exposure to apps. Nothing hosted or
+multi-host is planned. See `docs/plans/`.

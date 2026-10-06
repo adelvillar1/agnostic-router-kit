@@ -17,3 +17,12 @@ router/package-lock.json
 # NOTE: roster.json IS committed (it holds apiKeyEnv references, never raw
 # keys). If you ever put a raw "apiKey" in the roster, `kit apply` warns and
 # you must add roster.json here.
+
+# local tool caches — never committed
+.archify/
+
+# archify run receipts — the candidates and their HTML renders are the
+# committed artifacts (docs/architecture/*.candidate.json + *.html)
+docs/architecture/*.finalize*.json
+docs/architecture/*.delivery.json
+docs/architecture/*.browser-check.json

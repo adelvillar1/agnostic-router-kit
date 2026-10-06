@@ -59,7 +59,25 @@ The kit edition consumes this package as a `file:` dependency on the engine chec
 
 Upstream resolution is deliberately tiny: every roster provider with a `baseUrl` renders into `config.extraUpstreams` with its `apiKeyEnv` name, and the router reads the value live from its own `.env`. There is no provider config merge layer in this edition — that was ZCode-specific.
 
-Full request lifecycle: `docs/features/judge-delegation.md` (ported in the ZCode edition); diagrams in `docs/img/`.
+Full request lifecycle: `docs/features/judge-delegation.md` (ported in the ZCode edition).
+
+### 3.1 Diagrams
+
+`docs/architecture/` holds the archify set. Each is an interactive HTML render generated from the candidate JSON committed
+beside it; every node and edge in a candidate carries a `sources` entry naming the file and lines that make it true, and
+the run receipts (`.finalize*.json`, `.browser-check.json`, `.delivery.json`) are gitignored byproducts.
+
+| Diagram | Type | Candidate | Render |
+|---------|------|-----------|--------|
+| System overview | architecture | [`docs/architecture/system-overview.candidate.json`](architecture/system-overview.candidate.json) | [`system-overview.html`](architecture/system-overview.html) |
+| Run lifecycle | workflow | [`docs/architecture/run-lifecycle.candidate.json`](architecture/run-lifecycle.candidate.json) | [`run-lifecycle.html`](architecture/run-lifecycle.html) |
+| Deep-research loop | workflow | [`docs/architecture/deep-research-loop.candidate.json`](architecture/deep-research-loop.candidate.json) | [`deep-research-loop.html`](architecture/deep-research-loop.html) |
+
+Regenerate with the archify CLI (`finalize <type> <candidate.json> <output.html> --repo-root . --quality showcase`).
+The text companion is [`docs/architecture/overview.md`](architecture/overview.md).
+
+Two older static drawings predate the set and are not part of it: `docs/img/request-lifecycle.svg` (the request path)
+and `docs/img/quota.svg` (the quota flow), both embedded in `router/README.md`.
 
 ## 4. State & Storage
 

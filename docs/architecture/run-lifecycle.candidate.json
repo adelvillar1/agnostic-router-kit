@@ -1,0 +1,431 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "run lifecycle — spawn, phases, escalation, settlement",
+    "subtitle": "One run of a workflow module: who may start it, what gets journalled, how an unanswered question gets resolved, and how the run closes.",
+    "output": "docs/architecture/run-lifecycle.html",
+    "animation": "none",
+    "visual_preset": "classic",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:adelvillar1/agnostic-router-kit.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "daf55f4b89768afaa63acf2ddd22ce537fd81a39"
+    }
+  },
+  "lanes": [
+    {
+      "id": "caller",
+      "label": "Run API caller"
+    },
+    {
+      "id": "server",
+      "label": "Router server"
+    },
+    {
+      "id": "plane",
+      "label": "Workflow plane"
+    },
+    {
+      "id": "owner",
+      "label": "Owner and escalation",
+      "variant": "exception"
+    },
+    {
+      "id": "store",
+      "label": "Run record"
+    }
+  ],
+  "phases": [
+    {
+      "id": "p-spawn",
+      "label": "1 · spawn",
+      "fromCol": 0,
+      "toCol": 2
+    },
+    {
+      "id": "p-run",
+      "label": "2 · run",
+      "fromCol": 3,
+      "toCol": 4
+    },
+    {
+      "id": "p-settle",
+      "label": "3 · settle",
+      "fromCol": 5,
+      "toCol": 5,
+      "variant": "emphasis"
+    }
+  ],
+  "mainPath": [
+    "req",
+    "api",
+    "gate",
+    "plane",
+    "loop",
+    "settle"
+  ],
+  "nodes": [
+    {
+      "id": "req",
+      "lane": "caller",
+      "col": 0,
+      "type": "external",
+      "label": "App caller",
+      "sublabel": "POST /v1/runs · app token",
+      "icon": "person",
+      "width": 148,
+      "sources": [
+        {
+          "path": "router/server.js",
+          "line": 1518,
+          "end_line": 1525,
+          "label": "run route"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "lane": "server",
+      "col": 1,
+      "type": "backend",
+      "label": "Run API wire",
+      "sublabel": "ownership re-derived per request",
+      "width": 184,
+      "sources": [
+        {
+          "path": "router/server.js",
+          "line": 1177,
+          "end_line": 1190,
+          "label": "authForRequest"
+        },
+        {
+          "path": "router/server.js",
+          "line": 1690,
+          "end_line": 1696,
+          "label": "re-derive owner"
+        }
+      ]
+    },
+    {
+      "id": "gate",
+      "lane": "server",
+      "col": 2,
+      "type": "security",
+      "label": "Spawn gate",
+      "sublabel": "ceiling · workdir · owner",
+      "width": 144,
+      "sources": [
+        {
+          "path": "router/server.js",
+          "line": 1594,
+          "end_line": 1626,
+          "label": "ceiling + workdir 403s"
+        }
+      ]
+    },
+    {
+      "id": "denied",
+      "lane": "caller",
+      "col": 2,
+      "type": "security",
+      "label": "403 out of bounds",
+      "sublabel": "ceiling, root, or owner",
+      "width": 168,
+      "sources": [
+        {
+          "path": "router/server.js",
+          "line": 1594,
+          "label": "grant ceiling refusal"
+        },
+        {
+          "path": "router/server.js",
+          "line": 1614,
+          "end_line": 1618,
+          "label": "workdir outside root"
+        }
+      ]
+    },
+    {
+      "id": "plane",
+      "lane": "plane",
+      "col": 3,
+      "type": "backend",
+      "label": "runWorkflow",
+      "sublabel": "grants and facts, then transform",
+      "width": 168,
+      "sources": [
+        {
+          "path": "lib/workflow/engine.mjs",
+          "line": 84,
+          "end_line": 142,
+          "label": "runWorkflow entry"
+        },
+        {
+          "path": "lib/workflow/engine.mjs",
+          "line": 159,
+          "end_line": 209,
+          "label": "grant + fact resolution"
+        }
+      ]
+    },
+    {
+      "id": "loop",
+      "lane": "plane",
+      "col": 4,
+      "type": "backend",
+      "label": "Phases and agents",
+      "sublabel": "agent turns ride the router",
+      "width": 168,
+      "sources": [
+        {
+          "path": "lib/workflow/engine.mjs",
+          "line": 332,
+          "end_line": 334,
+          "label": "agent binding"
+        },
+        {
+          "path": "lib/workflow/engine.mjs",
+          "line": 551,
+          "end_line": 575,
+          "label": "sys1 classify + judge"
+        }
+      ]
+    },
+    {
+      "id": "esc",
+      "lane": "owner",
+      "col": 4,
+      "type": "security",
+      "label": "Escalation",
+      "sublabel": "declared → live → askOwner",
+      "width": 160,
+      "sources": [
+        {
+          "path": "lib/workflow/engine.mjs",
+          "line": 146,
+          "end_line": 156,
+          "label": "escalateToOwner"
+        },
+        {
+          "path": "lib/workflow/engine.mjs",
+          "line": 952,
+          "end_line": 981,
+          "label": "answerEscalation"
+        }
+      ]
+    },
+    {
+      "id": "journal",
+      "lane": "store",
+      "col": 4,
+      "type": "database",
+      "label": "run.jsonl",
+      "sublabel": "every phase, agent, tool event",
+      "width": 160,
+      "sources": [
+        {
+          "path": "lib/workflow/engine.mjs",
+          "line": 139,
+          "end_line": 142,
+          "label": "emit"
+        },
+        {
+          "path": "lib/workflow/runstate.mjs",
+          "line": 42,
+          "end_line": 70,
+          "label": "append over run dir"
+        }
+      ]
+    },
+    {
+      "id": "ans",
+      "lane": "owner",
+      "col": 5,
+      "type": "security",
+      "label": "Answers route",
+      "sublabel": "POST /answers · owner-checked",
+      "width": 160,
+      "sources": [
+        {
+          "path": "router/server.js",
+          "line": 1660,
+          "end_line": 1698,
+          "label": "answers route"
+        }
+      ]
+    },
+    {
+      "id": "settle",
+      "lane": "store",
+      "col": 5,
+      "type": "database",
+      "label": "Run record",
+      "sublabel": "summary.json · artifacts/ · run-done",
+      "width": 192,
+      "sources": [
+        {
+          "path": "lib/workflow/engine.mjs",
+          "line": 662,
+          "end_line": 667,
+          "label": "summary + run-done"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "req-api",
+      "from": "req",
+      "to": "api",
+      "label": "POST /v1/runs",
+      "role": "main"
+    },
+    {
+      "id": "api-gate",
+      "from": "api",
+      "to": "gate",
+      "label": "name the runnable",
+      "role": "main"
+    },
+    {
+      "id": "gate-denied",
+      "from": "gate",
+      "to": "denied",
+      "label": "403 out of bounds",
+      "role": "error"
+    },
+    {
+      "id": "gate-plane",
+      "from": "gate",
+      "to": "plane",
+      "label": "spawn in-process",
+      "role": "main"
+    },
+    {
+      "id": "plane-journal",
+      "from": "plane",
+      "to": "journal",
+      "label": "run-start",
+      "role": "async"
+    },
+    {
+      "id": "plane-loop",
+      "from": "plane",
+      "to": "loop",
+      "label": "phases",
+      "role": "main"
+    },
+    {
+      "id": "loop-journal",
+      "from": "loop",
+      "to": "journal",
+      "label": "every event",
+      "role": "async"
+    },
+    {
+      "id": "loop-esc",
+      "from": "loop",
+      "to": "esc",
+      "label": "unknown fact",
+      "role": "branch",
+      "variant": "dashed"
+    },
+    {
+      "id": "esc-ans",
+      "from": "esc",
+      "to": "ans",
+      "label": "owner answers",
+      "role": "main"
+    },
+    {
+      "id": "ans-loop",
+      "from": "ans",
+      "to": "loop",
+      "label": "resume",
+      "role": "return"
+    },
+    {
+      "id": "loop-settle",
+      "from": "loop",
+      "to": "settle",
+      "label": "return value",
+      "role": "main"
+    }
+  ],
+  "semanticChecks": {
+    "allowedRoots": [
+      "req"
+    ],
+    "allowedTerminals": [
+      "denied",
+      "journal",
+      "settle"
+    ],
+    "requiredEdges": [
+      {
+        "from": "gate",
+        "to": "denied"
+      },
+      {
+        "from": "loop",
+        "to": "esc"
+      },
+      {
+        "from": "ans",
+        "to": "loop"
+      }
+    ],
+    "requiredPaths": [
+      {
+        "from": "req",
+        "to": "settle"
+      }
+    ]
+  },
+  "cards": [
+    {
+      "dot": "violet",
+      "title": "Ownership is derived, never stored",
+      "items": [
+        "The run-start line records which app spawned the run.",
+        "The answers and artifacts routes re-derive that owner on every request.",
+        "A restart never loosens the gate and never strands a run.",
+        "router/server.js:1188 and 1715"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "The journal is the record",
+      "items": [
+        "run.jsonl carries the phases, agent and tool calls, each escalation and its answer.",
+        "summary.json closes the run and releases the spawn slot.",
+        "Nothing in the plane is reconstructed after the fact.",
+        "lib/workflow/engine.mjs:139 and 662"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "An escalation has five sources",
+      "items": [
+        "A declared answer, then the live answers.jsonl row.",
+        "Then a question-substring match against either.",
+        "Then askOwner, then a recorded \"no owner\" answer.",
+        "The source that resolved it is journalled.",
+        "lib/workflow/engine.mjs:952"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Agents ride the router",
+      "items": [
+        "The plane's model calls go back through 127.0.0.1:8300 with the operator token.",
+        "Quota steering, failover, and the mixture still apply inside a workflow.",
+        "Judgments route to sys1 for classification and to TypeSafe for decisions.",
+        "lib/workflow/engine.mjs:105 and 551"
+      ]
+    }
+  ]
+}

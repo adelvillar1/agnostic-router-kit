@@ -1,0 +1,401 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "deep-research — the loop, the meter, and the judge",
+    "subtitle": "One workflow runs every search under a credit budget, agents only extract and reflect, a sys1 judge head rules each finding, and the loop stops on coverage, plateau, depth, or budget.",
+    "output": "docs/architecture/deep-research-loop.html",
+    "animation": "none",
+    "visual_preset": "classic",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:adelvillar1/agnostic-router-kit.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "daf55f4b89768afaa63acf2ddd22ce537fd81a39"
+    }
+  },
+  "lanes": [
+    {
+      "id": "ag",
+      "label": "Agents (tool-less)"
+    },
+    {
+      "id": "jd",
+      "label": "Judgment"
+    },
+    {
+      "id": "ext",
+      "label": "Search and read"
+    },
+    {
+      "id": "wf",
+      "label": "Workflow (the only spender)"
+    },
+    {
+      "id": "art",
+      "label": "Artifacts"
+    }
+  ],
+  "phases": [
+    {
+      "id": "p-plan",
+      "label": "1 · plan",
+      "fromCol": 0,
+      "toCol": 0
+    },
+    {
+      "id": "p-round",
+      "label": "2 · each round",
+      "fromCol": 1,
+      "toCol": 4,
+      "variant": "emphasis"
+    },
+    {
+      "id": "p-decide",
+      "label": "3 · reflect and decide",
+      "fromCol": 5,
+      "toCol": 5,
+      "variant": "security"
+    }
+  ],
+  "mainPath": [
+    "planner",
+    "meter",
+    "search",
+    "scrape",
+    "scouts",
+    "judge",
+    "reflector",
+    "stop",
+    "report"
+  ],
+  "nodes": [
+    {
+      "id": "planner",
+      "lane": "ag",
+      "col": 0,
+      "type": "backend",
+      "label": "Research planner",
+      "sublabel": "splits the topic into sub-questions",
+      "width": 219,
+      "sources": [
+        {
+          "path": "workflows/deep-research.ts",
+          "line": 111,
+          "end_line": 120,
+          "label": "planner agent"
+        }
+      ]
+    },
+    {
+      "id": "meter",
+      "lane": "wf",
+      "col": 0,
+      "type": "security",
+      "label": "Credit meter",
+      "sublabel": "checked before each search",
+      "width": 219,
+      "sources": [
+        {
+          "path": "workflows/deep-research.ts",
+          "line": 145,
+          "end_line": 158,
+          "label": "budget check per search"
+        },
+        {
+          "path": "lib/workflow/engine.mjs",
+          "line": 388,
+          "end_line": 389,
+          "label": "spentCredits"
+        }
+      ]
+    },
+    {
+      "id": "search",
+      "lane": "ext",
+      "col": 1,
+      "type": "cloud",
+      "label": "Cloud search",
+      "sublabel": "one cheap call, no scrapes",
+      "width": 219,
+      "sources": [
+        {
+          "path": "workflows/deep-research.ts",
+          "line": 155,
+          "end_line": 158,
+          "label": "world.search"
+        },
+        {
+          "path": "lib/workflow/engine.mjs",
+          "line": 423,
+          "end_line": 441,
+          "label": "search binding + meter"
+        }
+      ]
+    },
+    {
+      "id": "scrape",
+      "lane": "ext",
+      "col": 2,
+      "type": "cloud",
+      "label": "Self-hosted scrape",
+      "sublabel": "the operator's Firecrawl, free",
+      "width": 227,
+      "sources": [
+        {
+          "path": "workflows/deep-research.ts",
+          "line": 165,
+          "end_line": 176,
+          "label": "scrapeBudget per round"
+        },
+        {
+          "path": "lib/workflow/services.mjs",
+          "line": 219,
+          "end_line": 219,
+          "label": "scrape endpoint"
+        }
+      ]
+    },
+    {
+      "id": "scouts",
+      "lane": "ag",
+      "col": 3,
+      "type": "backend",
+      "label": "Scout agents",
+      "sublabel": "extract candidate findings",
+      "width": 219,
+      "sources": [
+        {
+          "path": "workflows/deep-research.ts",
+          "line": 181,
+          "end_line": 206,
+          "label": "one scout per question"
+        },
+        {
+          "path": "workflows/deep-research.ts",
+          "line": 91,
+          "end_line": 91,
+          "label": "web_search denied"
+        }
+      ]
+    },
+    {
+      "id": "judge",
+      "lane": "jd",
+      "col": 4,
+      "type": "security",
+      "label": "sys1 judge head",
+      "sublabel": "supported or unconfirmed",
+      "width": 223,
+      "sources": [
+        {
+          "path": "workflows/deep-research.ts",
+          "line": 96,
+          "end_line": 109,
+          "label": "judge spec"
+        },
+        {
+          "path": "workflows/deep-research.ts",
+          "line": 218,
+          "end_line": 238,
+          "label": "judge call + one-way rule"
+        }
+      ]
+    },
+    {
+      "id": "reflector",
+      "lane": "ag",
+      "col": 5,
+      "type": "backend",
+      "label": "Reflector",
+      "sublabel": "answered, gaps, next questions",
+      "width": 279,
+      "sources": [
+        {
+          "path": "workflows/deep-research.ts",
+          "line": 242,
+          "end_line": 255,
+          "label": "reflection"
+        }
+      ]
+    },
+    {
+      "id": "stop",
+      "lane": "wf",
+      "col": 5,
+      "type": "security",
+      "label": "Stop decision",
+      "sublabel": "coverage · plateau · depth · budget",
+      "width": 283,
+      "sources": [
+        {
+          "path": "workflows/deep-research.ts",
+          "line": 277,
+          "end_line": 293,
+          "label": "stop reasons"
+        }
+      ]
+    },
+    {
+      "id": "report",
+      "lane": "art",
+      "col": 5,
+      "type": "database",
+      "label": "Report and ledger",
+      "sublabel": "deliverable · ledger · coverage-map",
+      "width": 291,
+      "sources": [
+        {
+          "path": "workflows/deep-research.ts",
+          "line": 296,
+          "end_line": 341,
+          "label": "writer, reader, artifacts"
+        },
+        {
+          "path": "workflows/deep-research.ts",
+          "line": 260,
+          "end_line": 267,
+          "label": "ledger per round"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "planner-meter",
+      "from": "planner",
+      "to": "meter",
+      "label": "sub-questions",
+      "role": "main"
+    },
+    {
+      "id": "meter-search",
+      "from": "meter",
+      "to": "search",
+      "label": "within ceiling",
+      "role": "main"
+    },
+    {
+      "id": "search-scrape",
+      "from": "search",
+      "to": "scrape",
+      "label": "result rows",
+      "role": "main"
+    },
+    {
+      "id": "scrape-scouts",
+      "from": "scrape",
+      "to": "scouts",
+      "label": "rows + page content",
+      "role": "main"
+    },
+    {
+      "id": "scouts-judge",
+      "from": "scouts",
+      "to": "judge",
+      "label": "candidate findings",
+      "role": "main"
+    },
+    {
+      "id": "judge-reflector",
+      "from": "judge",
+      "to": "reflector",
+      "label": "supported + unconfirmed",
+      "role": "main"
+    },
+    {
+      "id": "reflector-stop",
+      "from": "reflector",
+      "to": "stop",
+      "label": "next questions empty?",
+      "role": "main"
+    },
+    {
+      "id": "stop-meter",
+      "from": "stop",
+      "to": "meter",
+      "label": "next round, budget left",
+      "role": "return",
+      "variant": "dashed"
+    },
+    {
+      "id": "stop-report",
+      "from": "stop",
+      "to": "report",
+      "label": "stop reason",
+      "role": "main"
+    }
+  ],
+  "semanticChecks": {
+    "allowedRoots": [
+      "planner"
+    ],
+    "allowedTerminals": [
+      "report"
+    ],
+    "requiredEdges": [
+      {
+        "from": "meter",
+        "to": "search"
+      },
+      {
+        "from": "stop",
+        "to": "meter"
+      },
+      {
+        "from": "judge",
+        "to": "reflector"
+      }
+    ],
+    "requiredPaths": [
+      {
+        "from": "planner",
+        "to": "report"
+      }
+    ]
+  },
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "Spending happens in exactly one place",
+      "items": [
+        "The workflow runs every search — one cheap, no-scrape call per sub-question, deduped by query.",
+        "Every agent carries web_search denied, so no agent loop can spend around the meter.",
+        "Both calls need the net-search grant; without it the run refuses by name.",
+        "workflows/deep-research.ts:91 and 145"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "The meter stops before it overspends",
+      "items": [
+        "creditBudget (default 20; a search is roughly 2) is checked before each call.",
+        "Spent means the remaining questions work from the pool already judged.",
+        "The result names credit-budget, so a short run explains itself.",
+        "workflows/deep-research.ts:146"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Judged, not asked",
+      "items": [
+        "A sys1 judge head rules each finding supported or unconfirmed on the scraped page content.",
+        "The judge may downgrade a finding, never upgrade one — the one-way rule.",
+        "An unreachable judge leaves the finding unconfirmed rather than passing it.",
+        "workflows/deep-research.ts:218"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Stops on honest grounds",
+      "items": [
+        "Coverage: the reflector returns no next questions.",
+        "Plateau: a round added no new sources.",
+        "Depth: the round cap, or the credit budget, ran out.",
+        "Every stop reason lands in the result and the coverage map.",
+        "workflows/deep-research.ts:277"
+      ]
+    }
+  ]
+}
