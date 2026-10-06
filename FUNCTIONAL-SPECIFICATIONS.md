@@ -70,6 +70,8 @@ The kit's economic contract — what protects the user's prepaid plans:
 
 The dashboard is the kit's only UI — usage tabs (live via SSE), the registry/library view with install state, and model-strength-aware suggestions. It authenticates with the local token (stamped into the served page). Saves go through `PUT /api/roster`, which writes the roster and re-applies — the dashboard can never produce state the kit wouldn't.
 
+Two tabs watch the kit's own workflow work and are strictly read-only. **Activity** lists every run the kit has written, active or finished, live over the journal tail — an open run with nothing landing for 2+ minutes is marked stalled, ages refresh every 5s, and a click on a row opens its detail (phases, agents, tool counts, gate verdicts, event feed). **Board** turns the same sources into a kanban of work items: four columns — Planned, Executing, Completed, Abandoned — where one card is one work item (a plan with the runs it dispatched, or a run on its own) carrying its deliverables, its agent assignment, and what the agent is doing right now. Clicking a card opens that task's detail, and a run detail carries an "open run in Activity tab" cross-link back to the live feed. Cards move as a run starts, finishes or fails, so an executing run is visible without a refresh. The layered DAG the board replaced sits one toggle away over exactly the same data. Nothing on either surface writes — the kit CLI stays the only writer.
+
 ## 6. The Workflow Runtime
 
 A workflow is one TypeScript file that runs on the kit itself, with no harness present. The contract, in full, lives in `docs/features/workflow-runtime.md`; the user-visible rules:

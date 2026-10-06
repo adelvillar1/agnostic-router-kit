@@ -76,9 +76,18 @@ Edge kinds: `defines`, `sequences`, `dispatches`, `verifies`, `spawns`,
   stalled? / done / failed) driven by the heartbeat, and per-run detail:
   phases, agents, artifacts, gate verdicts in the run's time window, and a
   200-line event feed. Completed runs render from summary + replay.
-- **Dashboard Graph tab** — layered DAG (longest-path columns, barycenter
-  rows, hand-rolled SVG, no framework) with live deltas, click-through
-  detail per node kind, wheel zoom and drag pan.
+- **Dashboard Board tab** — a kanban of work items over exactly the same
+  graph model: four columns (Planned, Executing, Completed, Abandoned), one
+  card per work item (a plan with the runs it dispatched, or a run on its
+  own) carrying its deliverables, its agent assignment and what the agent is
+  doing right now. A click opens the task's detail, and a run detail's "open
+  run in Activity tab" cross-link jumps to the live feed. Cards move as a run
+  starts, finishes or fails — an executing card never needs a refresh to be
+  noticed.
+- **Dashboard Graph view** — the layered DAG the board replaced, now the Board
+  tab's second mode: one toggle over the same data, longest-path columns and
+  barycenter rows in hand-rolled SVG (no framework), live deltas,
+  click-through detail per node kind, wheel zoom and drag pan.
 - **`kit workflows watch [runId] [--follow]`** — replays a journal one line
   per event (a finished replay lines up with the journal 1:1); `--follow`
   tails a live run until it settles. The router is never involved.

@@ -230,7 +230,8 @@ status` points at where it lives).
   providers (empty `models[]`) are scored from the pairs the live config
   actually routes.
 
-Four surfaces:
+Six surfaces. Four edit the roster; two watch the kit's own workflow work
+and are strictly read-only (the kit CLI stays the only writer of either):
 
 - **Usage** — the point of the router is that plans are prepaid, so the
   interesting number is what each model actually consumed. Calls, errors,
@@ -260,6 +261,17 @@ Four surfaces:
   to library derivation. **Authoring stays outside the router**: workflows
   are `.dwf.ts` files in your own workflow library; this tab tunes
   assignment, never the workflow code.
+- **Activity** — every workflow run the kit has written, active or finished,
+  live over the journal tail. An open run with nothing landing for 2+ minutes
+  is marked stalled, ages refresh every 5s, and a click on a row opens its
+  detail: summary strip, phases, artifacts, gate verdicts in window,
+  per-agent asks/tools counts, and the event feed.
+- **Board** — the same sources as a kanban of work items: four columns
+  (Planned, Executing, Completed, Abandoned), one card per work item carrying
+  its deliverables, its agent assignment and what the agent is doing right
+  now. Cards move as a run starts, finishes or fails; a click opens the
+  task's detail, and a run detail carries an "open run in Activity tab"
+  cross-link back to the live feed.
 
 Save & apply writes the roster and then runs the kit's own
 `agnostic-router-kit apply --only router` — validation, the payg guard, and
@@ -269,6 +281,30 @@ resynced before the error reaches the UI. Two fields are not
 dashboard-editable on purpose: the router identity (`port` / `localToken`) —
 changing the port there would desync the running service definition — and the
 schema version.
+
+## Workflow surfaces: Activity and Board
+
+Both surfaces answer "what is the kit working on right now" from the same
+read-only sources, and neither can change any of them:
+
+- the plan markdown under `docs/plans/` (criteria, phases, status),
+- each run's `run.jsonl` journal and `summary.json`,
+- the router log, the dev-decisions store, `git log`, and the recaps.
+
+A plan's runs dispatch the work; a bare run is its own item. A card lands in
+Executing while any of its runs is live, in Completed when the work settled,
+in Abandoned when a run failed (or a plan was marked abandoned), and in
+Planned otherwise — so the columns are a read of run state, not a second copy
+of it. Deliverables come from the run's artifacts, agent assignment from the
+journal's ask events, and "what the agent is doing now" from the newest event
+in the tail; a run that has produced nothing yet says so instead of guessing.
+
+The data path is the two endpoints plus the SSE stream the Activity tab
+already talks to: `GET /api/workflow-graph` (memoized 5s) for the graph model
+the board assembles itself, `GET /api/workflow-run/<id>` for a run's detail,
+and the live frames (`hello`, `heartbeat`, `event`, `summary`, `graph-node`,
+`graph-edge`) that move cards without a refresh. The layered DAG the board
+replaced is the Board tab's second mode — one toggle, same data.
 
 ## Judge backends (TypeSafe / GLiNER2.5)
 

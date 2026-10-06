@@ -124,7 +124,7 @@
   .mono-list { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
   .qcard { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
 
-  /* ── workflow activity + graph tabs ── */
+  /* ── workflow activity + board tabs ── */
   .badge.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
   .badge.err { color: var(--err); border-color: color-mix(in srgb, var(--err) 45%, transparent); }
   .badge.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
@@ -144,6 +144,27 @@
   .gnode rect.body { fill: var(--panel2); }
   .gnode text { font: 10.5px ui-monospace, Menlo, monospace; fill: var(--text); }
   .gnode:hover rect.body, .gnode.sel rect.body { stroke-width: 2; filter: brightness(1.25); }
+  /* ── board tab: kanban columns over the same graph ── */
+  .bmode.on { background: var(--chip); color: var(--text); border-color: var(--accent); }
+  .kboard { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(250px, 1fr); gap: 10px; align-items: start; }
+  .kcol { background: var(--panel2); border: 1px solid var(--line); border-top: 2px solid var(--kcol); border-radius: 7px; display: flex; flex-direction: column; max-height: 68vh; min-width: 0; }
+  .kcol .kh { display: flex; align-items: baseline; gap: 8px; padding: 9px 11px 8px; border-bottom: 1px solid var(--line); }
+  .kcol .kname { font-size: 11px; text-transform: uppercase; letter-spacing: .7px; font-weight: 600; color: var(--text); }
+  .kcol .kcount { margin-left: auto; font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .kcollist { overflow-y: auto; overscroll-behavior: contain; padding: 9px; display: flex; flex-direction: column; gap: 8px; }
+  .kempty { color: var(--faint); font-size: 11px; padding: 12px 4px; }
+  button.kcard { display: block; width: 100%; text-align: left; font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--kedge, var(--dim)); border-radius: 6px; padding: 9px 10px; cursor: pointer; }
+  button.kcard:hover { border-color: var(--accent); }
+  button.kcard.sel { outline: 1px solid var(--accent); outline-offset: -1px; }
+  .kcard .kt { font-size: 12px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+  .kcard .km { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .kcard .kmeta { margin-left: auto; font-size: 10px; color: var(--faint); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+  .kcard .ksec { font-size: 9.5px; text-transform: uppercase; letter-spacing: .6px; color: var(--faint); margin-top: 9px; }
+  .kcard .kline { font-size: 11px; color: var(--dim); line-height: 1.5; overflow-wrap: anywhere; }
+  .kcard .kline b { color: var(--text); font-weight: 600; }
+  .klive { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--warn); animation: kpulse 1.6s ease-in-out infinite; }
+  @keyframes kpulse { 0%, 100% { opacity: 1; } 50% { opacity: .2; } }
+  @media (prefers-reduced-motion: reduce) { .klive { animation: none; } }
 </style>
 </head>
 <body>
@@ -164,7 +185,7 @@
   <button data-tab="quota">Quota</button>
   <button data-tab="workflows">Workflows</button>
   <button data-tab="activity">Activity</button>
-  <button data-tab="graph">Graph</button>
+  <button data-tab="board">Board</button>
 </nav>
 
 <main>
@@ -361,11 +382,22 @@
     </section>
   </div>
 
-  <!-- ══════════════════════════ GRAPH ══════════════════════════ -->
-  <div id="tab-graph" class="hidden">
-    <section class="panel">
-      <h2>Session graph <span class="hint" id="gMeta"></span></h2>
-      <div class="sub">Plan → criteria → phases → runs → agents → artifacts → gates → commits → recaps, assembled read-only from run journals, plan markdown, the dev-decisions store, git log and recaps. Nodes appear live while a run executes — no refresh. Wheel zooms, drag pans, click a node for detail.</div>
+  <!-- ══════════════════════════ BOARD ══════════════════════════ -->
+  <!-- The board is the default view of this tab; the layered DAG it replaced
+       stays one toggle away over exactly the same data. -->
+  <div id="tab-board" class="hidden">
+    <div class="row" style="margin-bottom:10px">
+      <button class="btn bmode on" id="bmodeBoard">Board</button>
+      <button class="btn bmode" id="bmodeGraph">Graph</button>
+      <span class="hint" id="gMeta"></span>
+    </div>
+    <section class="panel" id="boardView">
+      <div class="sub">What is planned, executing, completed and abandoned — one card per work item, assembled read-only from the same sources the graph reads: plan markdown, run journals, the router log, the dev-decisions store, git log and recaps. Cards move as a run starts, finishes or fails. Click a card for its detail.</div>
+      <div class="kboard" id="kboard"></div>
+    </section>
+    <section class="panel hidden" id="graphView">
+      <h2>Session graph <span class="hint">plan → criteria → phases → runs → agents → artifacts → gates → commits → recaps</span></h2>
+      <div class="sub">Wheel zooms, drag pans, click a node for detail.</div>
       <div id="gLegend" class="row" style="margin-bottom:8px"></div>
       <div id="gsvgWrap"><svg id="gsvg" xmlns="http://www.w3.org/2000/svg"></svg><div id="ghint" class="hint">rendering…</div></div>
     </section>
@@ -487,7 +519,7 @@ $$("nav button").forEach((b) => (b.onclick = () => {
   $$("main > div").forEach((d) => d.classList.toggle("hidden", d.id !== `tab-${tab}`));
   loadAll();
   if (tab === "activity") wfEnsure();
-  else if (tab === "graph") graphEnsure();
+  else if (tab === "board") boardEnsure();
 }));
 $("#autoRef").onchange = () => setTimer();
 function setTimer() {
@@ -1079,7 +1111,7 @@ $("#revertRoster").onclick = async () => {
   catch (e) { if (e.message !== "unauthorized") toast(e.message, true); }
 };
 
-/* ── workflow activity + graph (one SSE stream feeds both) ──── */
+/* ── workflow activity + board (one SSE stream feeds both) ──── */
 // The server's hello frame carries the current run snapshot, the 5s heartbeat
 // carries fresh per-run last-event ages, and journal events / graph deltas
 // arrive as the kit writes them. Strictly read-only: fetch and render only.
@@ -1114,19 +1146,32 @@ function wfStartSse() {
       for (const r of f.runs ?? []) {
         const st = wf.runs.get(r.runId);
         if (st) { st.lastEventAgeMs = r.lastEventAgeMs; st.active = r.active; }
+        // The heartbeat is the authority on whether a run is still live: the
+        // journal's own run-done line only reaches the board as an event, and
+        // summary.json lands a beat later. Without this a finished run would
+        // sit in Executing until the next graph rebuild.
+        const n = gModel.nodes.get(`run:${r.runId}`);
+        if (n && r.active !== undefined) n.active = r.active;
       }
       if (tab === "activity") renderWfRuns();
+      boardRefresh();
     } else if (f.type === "summary") {
       const st = wf.runs.get(f.runId);
       if (st) st.summary = f.summary;
+      const n = gModel.nodes.get(`run:${f.runId}`);
+      if (n && f.summary) { n.active = false; n.ok = Boolean(f.summary.ok); if (Number.isFinite(f.summary.durationMs)) n.ms = f.summary.durationMs; }
       if (wf.selected === f.runId && tab === "activity") { renderWfRuns(); renderWfDetail(); }
+      boardRefresh();
     } else if (f.type === "event") {
       const st = wf.runs.get(f.runId);
       if (st) { st.events = (st.events ?? 0) + 1; st.lastEventAgeMs = 0; }
+      boardNoteEvent(f.runId, f.event);
       if (wf.selected === f.runId) wfAppendFeed(f.event);
       if (tab === "activity" && wf.selected === f.runId) renderWfRuns();
+      boardRefresh();
     } else if (f.type === "graph-node" || f.type === "graph-edge") {
       gApplyDelta(f);
+      boardRefresh();
     }
   };
 }
@@ -1299,18 +1344,7 @@ document.addEventListener("click", (e) => {
   if (tr) wfSelect(tr.dataset.wfrun);
 });
 
-/* ── graph tab: layered DAG over the same stream ────────────── */
-async function graphEnsure() {
-  try {
-    const g = await api("/api/workflow-graph");
-    gModel.meta = { counts: g.counts, generatedAt: g.generatedAt, kitHome: g.kitHome };
-    gModel.nodes = new Map((g.nodes ?? []).map((n) => [n.id, n]));
-    gModel.edges = g.edges ?? [];
-    renderGraphChrome();
-    drawGraph();
-  } catch (e) { if (e.message !== "unauthorized") toast(e.message, true); }
-}
-
+/* ── the shared graph model: layered DAG over the same stream ─ */
 function gApplyDelta(f) {
   if (f.type === "graph-node") {
     if (!gModel.nodes.has(f.node.id)) gModel.nodes.set(f.node.id, f.node);
@@ -1318,7 +1352,7 @@ function gApplyDelta(f) {
     if (!gModel.nodes.has(f.edge.from) || !gModel.nodes.has(f.edge.to)) return; // the node delta always arrives first
     if (!gModel.edges.some((e) => e.from === f.edge.from && e.to === f.edge.to && e.kind === f.edge.kind)) gModel.edges.push(f.edge);
   }
-  if (!gModel.renderTimer) gModel.renderTimer = setTimeout(() => { gModel.renderTimer = null; if (tab === "graph") drawGraph(); }, 400);
+  if (!gModel.renderTimer) gModel.renderTimer = setTimeout(() => { gModel.renderTimer = null; if (tab === "board" && board.mode === "graph") drawGraph(); }, 400);
 }
 
 function renderGraphChrome() {
@@ -1498,6 +1532,359 @@ function showGDetail(n) {
   drawGraph();
 }
 
+/* ── board tab: kanban columns over the same graph ──────────── */
+const BOARD_KEY = "agnostic-router-board-mode";
+const board = { items: [], sel: null, mode: "board", poll: null, activity: new Map(), renderTimer: null };
+const KCOLUMNS = [
+  { id: "planned", name: "Planned", edge: "var(--dim)" },
+  { id: "executing", name: "Executing", edge: "var(--warn)" },
+  { id: "completed", name: "Completed", edge: "var(--ok)" },
+  { id: "abandoned", name: "Abandoned", edge: "var(--err)" },
+];
+
+// A run belongs to a plan when one of the plan's phases dispatches it or one of
+// its criteria verifies it — the two edge kinds the graph builder draws from a
+// plan's prose. Every other run is its own work item.
+function boardBuild() {
+  const nodes = [...gModel.nodes.values()];
+  const runs = nodes.filter((n) => n.kind === "run");
+  const plans = nodes.filter((n) => n.kind === "plan");
+  const planOf = new Map();
+  for (const e of gModel.edges) {
+    if (e.kind !== "dispatches" && e.kind !== "verifies") continue;
+    if (!e.to.startsWith("run:")) continue;
+    planOf.set(e.to, e.from.replace(/^(?:phase|crit):/, "").split(":")[0]);
+  }
+  const items = [];
+  for (const p of plans) {
+    const mine = runs.filter((r) => planOf.get(r.id) === p.label).sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0));
+    items.push({ id: p.id, kind: "plan", node: p, slug: p.label, runs: mine, col: boardPlanColumn(p, mine) });
+  }
+  for (const r of runs) {
+    if (planOf.has(r.id)) continue;
+    items.push({ id: r.id, kind: "run", node: r, slug: null, runs: [r], col: boardRunColumn(r) });
+  }
+  board.items = items;
+}
+
+function boardPlanColumn(p, runs) {
+  if (p.status === "abandoned") return "abandoned";
+  if (p.status === "completed") return "completed";
+  if (runs.some((r) => r.active)) return "executing";
+  return "planned";
+}
+
+// A run with a terminal journal line but no summary is "ended" — neither a pass
+// nor a failure — so it reads as Completed and says "ended" on its face.
+function boardRunColumn(r) {
+  if (r.active) return "executing";
+  if (r.ok === false) return "abandoned";
+  return "completed";
+}
+
+const boardRunLabel = (r) => r.active ? "running" : r.ok === false ? "failed" : r.ok ? "ok" : "ended";
+
+// A runId is "<timestamp>-<workflow>"; the workflow name is the part an operator
+// recognises, the timestamp is what disambiguates. Card title uses the name.
+const boardSlug = (s) => String(s ?? "").replace(/^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-/, "");
+
+function boardGather(item) {
+  const ids = new Set(item.runs.map((r) => r.id));
+  const out = { agents: [], artifacts: [], parts: [] };
+  for (const e of gModel.edges) {
+    if (!ids.has(e.from)) continue;
+    const n = gModel.nodes.get(e.to);
+    if (!n) continue;
+    if (e.kind === "spawns") (n.kind === "part" ? out.parts : out.agents).push(n);
+    else if (e.kind === "produces") out.artifacts.push(n);
+  }
+  return out;
+}
+
+function boardPartVerdict(partId) {
+  const gs = gModel.edges.filter((e) => e.kind === "judged-by" && e.from === partId).map((e) => gModel.nodes.get(e.to)).filter(Boolean);
+  return gs.length ? gs[gs.length - 1].verdict : null;
+}
+
+function boardNoteEvent(runId, ev) {
+  if (!ev) return;
+  let a = board.activity.get(runId);
+  if (!a) board.activity.set(runId, a = { at: 0, phase: null, tool: null, actor: null, args: null });
+  a.at = Date.now();
+  if (ev.kind === "phase" && ev.phase) a.phase = ev.phase;
+  else if (ev.kind === "tool" && ev.tool) { a.tool = ev.tool; a.actor = ev.actor; a.args = ev.args; }
+  else if (ev.kind === "agent" && ev.actor) a.actor = ev.actor;
+  else if (ev.kind === "artifact" && ev.artifactId) a.artifact = ev.artifactId;
+}
+
+function boardItemActivity(item) {
+  // The stream keys a run by its bare id; the graph node carries the "run:"
+  // prefix. Match on the bare id so the tail the SSE fills is the one read here.
+  const acts = item.runs.map((r) => board.activity.get(r.id.replace(/^run:/, ""))).filter(Boolean).sort((a, b) => b.at - a.at);
+  let ageMs = null;
+  for (const r of item.runs) {
+    if (!r.id.startsWith("run:")) continue; // swarms have no run journal to age
+    const st = wf.runs.get(r.id.slice(4));
+    if (st && Number.isFinite(st.lastEventAgeMs)) ageMs = ageMs == null ? st.lastEventAgeMs : Math.min(ageMs, st.lastEventAgeMs);
+  }
+  return { acts, ageMs };
+}
+
+// Executing leads with the live run, then the newest; the rest read newest-first
+// so what just happened is what you see.
+function boardOrder(a, b) {
+  const la = a.runs.some((r) => r.active) ? 1 : 0, lb = b.runs.some((r) => r.active) ? 1 : 0;
+  if (la !== lb) return lb - la;
+  return (b.runs[0]?.startedAt ?? 0) - (a.runs[0]?.startedAt ?? 0);
+}
+
+function boardRender() {
+  boardBuild();
+  const wrap = $("#kboard");
+  if (!wrap) return;
+  // Rebuilding the columns must not throw away where the operator scrolled.
+  const scroll = $$(".kcollist").map((el) => el.scrollTop);
+  wrap.innerHTML = KCOLUMNS.map((c) => {
+    const items = board.items.filter((it) => it.col === c.id).sort(boardOrder);
+    return `<div class="kcol" style="--kcol:${c.edge}">
+      <div class="kh"><span class="kname">${c.name}</span><span class="kcount">${items.length}</span></div>
+      <div class="kcollist">${items.map(boardCard).join("") || `<div class="kempty">nothing here yet</div>`}</div></div>`;
+  }).join("");
+  $$(".kcollist").forEach((el, i) => { el.scrollTop = scroll[i] ?? 0; });
+}
+
+function boardCard(it) {
+  const g = boardGather(it);
+  const crit = it.kind === "plan" ? [...gModel.nodes.values()].filter((n) => n.kind === "criterion" && n.plan === it.slug) : [];
+  const done = crit.filter((c) => c.done).length;
+  const live = it.runs.some((r) => r.active);
+  const { acts, ageMs } = boardItemActivity(it);
+  const now = acts[0] ?? null;
+  const wf = it.kind === "plan" ? (it.runs[0]?.workflow ?? "plan") : (it.node.workflow ?? boardSlug(it.node.label));
+  const status = it.kind === "plan" ? (it.node.status ?? "unknown") : boardRunLabel(it.node);
+  const title = it.kind === "plan" ? (it.node.title ?? it.node.label) : boardSlug(it.node.label);
+  const sub = it.kind === "plan" ? String(it.node.label).slice(0, 64) : String(it.node.label).slice(0, 64);
+
+  const del = [];
+  if (it.kind === "plan") {
+    del.push(`<div class="kline"><b>${done}/${crit.length}</b> criteria${g.artifacts.length ? ` · ${g.artifacts.length} artifact${g.artifacts.length > 1 ? "s" : ""}` : ""}${it.runs.length ? ` · ${it.runs.length} run${it.runs.length > 1 ? "s" : ""}` : ""}</div>`);
+  }
+  for (const a of g.artifacts.slice(0, 3)) {
+    del.push(`<div class="kline">▸ <b>${esc(a.label)}</b>${a.version != null ? ` v${a.version}` : ""}${a.bytes != null ? ` · ${fmtTok(a.bytes)}B` : ""}${a.path ? ` <span class="hint">→ ${esc(a.path)}</span>` : ""}</div>`);
+  }
+  if (!crit.length && !g.artifacts.length) del.push(`<div class="kline hint">none recorded yet</div>`);
+
+  const ag = [];
+  for (const p of g.parts.slice(0, 4)) {
+    const v = boardPartVerdict(p.id);
+    ag.push(`<div class="kline">${esc(String(p.label).slice(0, 40))}${v ? ` · <b style="color:${v === "supported" ? "var(--ok)" : "var(--err)"}">${esc(v)}</b>` : ""}</div>`);
+  }
+  // The same agent name recurs across a plan's runs; a plan card shows one row
+  // per name with the totals, not one row per run.
+  const byActor = new Map();
+  for (const a of g.agents) {
+    const nm = String(a.label ?? "");
+    if (!nm || nm === "?") continue; // a tool call with no agent behind it is not an assignment
+    const t = byActor.get(nm) ?? { asks: 0, tools: 0 };
+    t.asks += a.asks ?? 0; t.tools += a.toolCalls ?? 0;
+    byActor.set(nm, t);
+  }
+  for (const [nm, t] of [...byActor.entries()].sort((a, b) => b[1].tools - a[1].tools).slice(0, 4)) {
+    ag.push(`<div class="kline">${esc(shortActor(nm))}${t.asks ? ` · ${fmtInt(t.asks)} ask${t.asks === 1 ? "" : "s"}` : ""}${t.tools ? ` · ${fmtInt(t.tools)} tools` : ""}</div>`);
+  }
+  if (!ag.length) ag.push(`<div class="kline hint">${it.kind === "plan" ? (it.runs.length ? "no named agents in these runs" : "no runs yet") : "no agents yet"}</div>`);
+
+  const nowl = [];
+  if (now?.phase) nowl.push(`<div class="kline">phase: <b>${esc(now.phase)}</b></div>`);
+  if (now?.tool) nowl.push(`<div class="kline">${now.actor ? `${esc(shortActor(now.actor))} → ` : ""}<b>${esc(now.tool)}</b>${now.args ? ` <span class="hint">${esc(String(now.args).slice(0, 40))}</span>` : ""}</div>`);
+  else if (now?.actor) nowl.push(`<div class="kline">${esc(shortActor(now.actor))}${now.artifact ? ` produced <b>${esc(now.artifact)}</b>` : ""}</div>`);
+  if (live && ageMs != null) nowl.push(`<div class="kline hint">last journal event ${esc(ageTxt(ageMs))}</div>`);
+  if (!nowl.length) nowl.push(`<div class="kline hint">${live ? "waiting for the first journal line" : it.kind === "plan" ? "nothing running" : "no journal events"}</div>`);
+
+  return `<button type="button" class="kcard${board.sel === it.id ? " sel" : ""}" data-kitem="${esc(it.id)}" style="--kedge:${(KCOLUMNS.find((c) => c.id === it.col) ?? {}).edge}">
+    <div class="km"><span class="badge">${it.kind}</span><span class="badge${live ? " warn" : it.node.ok === false ? " err" : it.node.ok ? " ok" : ""}">${esc(status)}</span>${live ? '<span class="klive" title="running"></span>' : ""}<span class="kmeta">${esc(wf)}</span></div>
+    <div class="kt">${esc(title)}</div>
+    <div class="hint">${esc(sub)}</div>
+    <div class="ksec">deliverables</div>${del.join("")}
+    <div class="ksec">agents</div>${ag.join("")}
+    <div class="ksec">now</div>${nowl.join("")}
+  </button>`;
+}
+
+function boardRefresh() {
+  if (tab !== "board" || board.mode !== "board") return;
+  if (board.renderTimer) return;
+  board.renderTimer = setTimeout(() => { board.renderTimer = null; if (tab === "board" && board.mode === "board") boardRender(); }, 350);
+}
+
+async function boardEnsure() {
+  try {
+    const g = await api("/api/workflow-graph");
+    gModel.meta = { counts: g.counts, generatedAt: g.generatedAt, kitHome: g.kitHome };
+    gModel.nodes = new Map((g.nodes ?? []).map((n) => [n.id, n]));
+    gModel.edges = g.edges ?? [];
+    renderGraphChrome();
+    if (board.mode === "graph") drawGraph();
+    else boardRender();
+  } catch (e) { if (e.message !== "unauthorized") toast(e.message, true); }
+}
+
+function boardSetMode(m) {
+  board.mode = m;
+  try { localStorage.setItem(BOARD_KEY, m); } catch {}
+  $("#bmodeBoard").classList.toggle("on", m === "board");
+  $("#bmodeGraph").classList.toggle("on", m === "graph");
+  $("#boardView").classList.toggle("hidden", m !== "board");
+  $("#graphView").classList.toggle("hidden", m !== "graph");
+  if (m === "graph") drawGraph();
+  else boardRender();
+}
+$("#bmodeBoard").onclick = () => boardSetMode("board");
+$("#bmodeGraph").onclick = () => boardSetMode("graph");
+
+/* ── board card detail ─────────────────────────────────────── */
+document.addEventListener("click", (e) => {
+  const tr = e.target.closest?.("[data-wfrun]");
+  if (tr) wfSelect(tr.dataset.wfrun);
+  const kc = e.target.closest?.("[data-kitem]");
+  if (kc) {
+    const it = board.items.find((i) => i.id === kc.dataset.kitem);
+    if (it) boardShowDetail(it);
+  }
+});
+
+async function boardShowDetail(it) {
+  board.sel = it.id;
+  boardRender();
+  $("#gdetail").classList.remove("hidden");
+  const body = it.kind === "plan" ? boardPlanDetail(it) : await boardRunDetail(it);
+  if (board.sel !== it.id) return; // the operator clicked another card meanwhile
+  $("#gdetailTitle").textContent = it.kind === "plan" ? `plan · ${it.node.label}` : `${it.node.workflow ?? "run"} · ${it.node.label}`;
+  $("#gdetailBody").innerHTML = body.html;
+  const btn = $("#kOpenRun");
+  if (btn) btn.onclick = () => {
+    document.querySelector('nav button[data-tab="activity"]').click();
+    wfSelect(body.runId);
+  };
+  $("#gdetail").scrollIntoView({ block: "nearest" });
+}
+
+function boardPlanDetail(it) {
+  const p = it.node;
+  const crit = [...gModel.nodes.values()].filter((n) => n.kind === "criterion" && n.plan === it.slug);
+  const phases = [...gModel.nodes.values()].filter((n) => n.kind === "phase" && n.plan === it.slug);
+  const g = boardGather(it);
+  const done = crit.filter((c) => c.done).length;
+  const rel = (kind, from) => gModel.edges.filter((e) => e.kind === kind && e.from === from).map((e) => gModel.nodes.get(e.to)).filter(Boolean);
+  const commits = rel("recorded-by", p.id);
+  const recaps = rel("summarized-in", p.id);
+  const statusCls = p.status === "completed" ? "ok" : p.status === "abandoned" ? "err" : p.status === "active" ? "warn" : "";
+  const rows = `<div class="row" style="margin-bottom:8px">
+      <span class="badge">plan</span><span class="badge ${statusCls}">${esc(p.status ?? "unknown")}</span>
+      <span class="hint">${done}/${crit.length} criteria${g.artifacts.length ? ` · ${g.artifacts.length} artifacts` : ""}${it.runs.length ? ` · ${it.runs.length} runs` : ""}</span>
+      <span class="hint">${esc(p.source ?? "")}</span>
+    </div>
+    ${crit.length ? `<div class="ksec" style="margin-top:0">acceptance criteria</div>
+      ${crit.map((c) => `<div class="kline"><b style="color:${c.done ? "var(--ok)" : "var(--faint)"}">${c.done ? "✓" : "▢"}</b> <b>${esc(c.label)}</b> ${esc(c.text ?? "")}</div>`).join("")}` : ""}
+    ${phases.length ? `<div class="ksec">phases</div><div class="row">${phases.map((ph) => `<span class="chip">${esc(ph.label)}</span>`).join(" ")}</div>` : ""}
+    ${it.runs.length ? `<div class="ksec">runs</div>${it.runs.map((r) => `<div class="kline"><b>${esc(boardRunLabel(r))}</b> · ${esc(r.workflow ?? r.label)} <span class="hint">${ago(Date.parse(r.startedAt))}${r.ms != null ? ` · ${durTxt(r.ms)}` : ""}</span></div>`).join("")}` : ""}
+    ${g.artifacts.length ? `<div class="ksec">artifacts</div>${g.artifacts.map((a) => `<div class="kline">▸ <b>${esc(a.label)}</b>${a.version != null ? ` v${a.version}` : ""}${a.bytes != null ? ` · ${fmtTok(a.bytes)}B` : ""}${a.path ? ` <span class="hint">→ ${esc(a.path)}</span>` : ""}</div>`).join("")}` : ""}
+    ${commits.length ? `<div class="ksec">recorded by commit</div>${commits.map((c) => `<div class="kline"><b>${esc(c.sha ?? "")}</b> ${esc(c.label ?? "")}</div>`).join("")}` : ""}
+    ${recaps.length ? `<div class="ksec">summarized in</div>${recaps.map((c) => `<div class="kline">${esc(c.label ?? "")}</div>`).join("")}` : ""}`;
+  return { html: rows, runId: (it.runs[0]?.id ?? "").replace(/^run:/, "") };
+}
+
+async function boardRunDetail(it) {
+  const r = it.node;
+  const runId = r.id.replace(/^run:/, "");
+  const g = boardGather(it);
+  let d = {};
+  try { d = await api(`/api/workflow-run/${encodeURIComponent(runId)}`); } catch { d = {}; }
+  const evs = Array.isArray(d.events) ? d.events : [];
+  const s = d.summary ?? null;
+  const concl = s?.result?.conclusion ?? s?.error;
+  const live = r.active ? true : Boolean(d.active);
+  const statusCls = live ? "warn" : r.ok === false ? "err" : r.ok ? "ok" : "";
+  const head = `<div class="row" style="margin-bottom:8px">
+      <span class="badge">run</span><span class="badge ${statusCls}">${esc(live ? "running" : boardRunLabel(r))}</span>
+      <span class="hint">${esc(r.workflow ?? r.label)}</span>
+      <span class="hint">${r.startedAt ? `started ${ago(Date.parse(r.startedAt))}` : ""}${r.ms != null ? ` · ${durTxt(r.ms)}` : ""}</span>
+      ${s ? `<span class="hint">${fmtInt(s.agentCalls ?? 0)} agent calls · ${fmtInt(s.toolCalls ?? 0)} tool calls</span>` : ""}
+    </div>`
+    + (concl ? `<pre class="out ${s?.ok === false ? "bad" : "good"}">${esc(String(concl).slice(0, 2000))}</pre>` : "");
+
+  // Contracts are the durable "who owns what": the plane journals one per agent
+  // on its first ask, with the count of files it owns and what it exposes.
+  const contracts = evs.filter((e) => e.kind === "contract" && e.actor);
+  const phases = (Array.isArray(s?.phases) ? s.phases : []).filter((p) => typeof p === "string" && p);
+  if (!phases.length) for (const e of evs) if (e.kind === "phase" && e.phase && !phases.includes(e.phase)) phases.push(e.phase);
+  const agents = new Map();
+  for (const e of evs) {
+    if ((e.kind !== "agent" && e.kind !== "tool") || !e.actor) continue;
+    const a = agents.get(e.actor) ?? { asks: 0, tools: 0, t: 0 };
+    if (e.kind === "agent") a.asks++; else a.tools++;
+    a.t = Math.max(a.t, e.t ?? 0);
+    agents.set(e.actor, a);
+  }
+  const arts = new Map();
+  for (const e of evs) if (e.kind === "artifact" && e.artifactId) {
+    const prev = arts.get(e.artifactId);
+    if (!prev || (e.version ?? 0) >= (prev.version ?? 0)) arts.set(e.artifactId, e);
+  }
+  for (const a of s?.artifacts ?? []) {
+    if (!a?.id) continue;
+    const prev = arts.get(a.id) ?? {};
+    arts.set(a.id, { artifactId: a.id, version: Math.max(prev.version ?? 0, Array.isArray(a.versions) ? a.versions.length : (a.version ?? 0)), bytes: prev.bytes ?? null, path: prev.path ?? a.path ?? null });
+  }
+  // Gates are dev-decisions rows, not journal events — attributed by time window,
+  // the same heuristic renderWfDetail uses.
+  const t0 = r.startedAt ?? null;
+  const t1 = s?.durationMs != null && t0 != null ? t0 + s.durationMs : Date.now();
+  const gates = [...gModel.nodes.values()].filter((n) => n.kind === "gate" && n.ts)
+    .map((n) => ({ n, t: Date.parse(n.ts) }))
+    .filter(({ t }) => Number.isFinite(t) && t0 != null && t >= t0 - 1000 && t <= t1 + 1000)
+    .sort((a, b) => a.t - b.t);
+  const escs = g.agents.length ? g.agents : null;
+
+  const html = head
+    + (contracts.length ? `<div class="ksec" style="margin-top:0">agent assignment</div>${contracts.map((c) => `<div class="kline"><b>${esc(shortActor(c.actor))}</b>${c.title ? ` — ${esc(c.title)}` : ""}</div>
+      ${c.files != null ? `<div class="hint">owns ${fmtInt(c.files)} file${c.files === 1 ? "" : "s"}</div>` : ""}
+      ${c.provides ? `<div class="hint">provides: ${esc(c.provides)}</div>` : ""}
+      ${c.acceptance != null ? `<div class="hint">${fmtInt(c.acceptance)} acceptance criteria</div>` : ""}`).join("")}`
+      : `<div class="ksec" style="margin-top:0">agent assignment</div><div class="kline hint">no contract events in the journal tail</div>`)
+    + (escs ? `<div class="ksec">agents assigned</div>${escs.map((a) => `<div class="kline">${esc(a.label)} · ${fmtInt(a.asks ?? 0)} ask${a.asks === 1 ? "" : "s"}${a.toolCalls ? ` · ${fmtInt(a.toolCalls)} tools` : ""}</div>`).join("")}` : "")
+    + (phases.length ? `<div class="ksec">phases</div><div class="row">${phases.map((ph) => `<span class="chip">${esc(ph)}</span>`).join(" ")}</div>` : "")
+    + (agents.size ? `<div class="ksec">agent activity</div><table><tbody>${[...agents.entries()].map(([actor, a]) =>
+        `<tr><td class="mono-list">${esc(shortActor(actor))}</td><td class="n">${a.asks}</td><td class="n">${a.tools}</td><td class="n dim">+${esc(durTxt(a.t))}</td></tr>`).join("")}</tbody></table>` : "")
+    + (arts.size ? `<div class="ksec">deliverables</div>${[...arts.values()].sort((x, y) => String(x.artifactId).localeCompare(String(y.artifactId))).map((a) =>
+        `<div class="kline">▸ <b>${esc(a.artifactId)}</b>${a.version != null ? ` v${a.version}` : ""}${a.bytes != null ? ` · ${fmtTok(a.bytes)}B` : ""}${a.path ? ` <span class="hint">→ ${esc(a.path)}</span>` : ""}</div>`).join("")}` : "")
+    + (g.parts.length ? `<div class="ksec">parts</div>${g.parts.map((p) => {
+        const v = boardPartVerdict(p.id);
+        return `<div class="kline">${esc(String(p.label).slice(0, 90))}${v ? ` · <b style="color:${v === "supported" ? "var(--ok)" : "var(--err)"}">${esc(v)}</b>` : ""}</div>`;
+      }).join("")}` : "")
+    + `<div class="ksec">gates in this run's window</div>${gates.length ? gates.map(({ n }) =>
+        `<div class="kline"><b style="color:${n.verdict === "pass" || n.verdict === "pass-with-concerns" ? "var(--ok)" : "var(--err)"}">${esc(n.verdict ?? "?")}</b> · ${esc(n.label ?? "")} <span class="hint">${esc(n.provider ?? "")}</span></div>`).join("")
+      : `<div class="kline hint">none in this run's window</div>`}`
+    + (runId ? `<div style="margin-top:10px"><button class="btn" id="kOpenRun">open run in Activity tab</button></div>` : "");
+  return { html, runId };
+}
+
+function boardPoll() {
+  if (board.poll) return;
+  board.poll = setInterval(() => { if (tab === "board" && token) boardEnsure(); }, 10_000);
+}
+
+// The board's mode is a view choice, not state — remembered per browser.
+(function boardInitMode() {
+  let m = "board";
+  try { m = localStorage.getItem(BOARD_KEY) === "graph" ? "graph" : "board"; } catch {}
+  board.mode = m;
+  $("#bmodeBoard").classList.toggle("on", m === "board");
+  $("#bmodeGraph").classList.toggle("on", m === "graph");
+  $("#boardView").classList.toggle("hidden", m !== "board");
+  $("#graphView").classList.toggle("hidden", m !== "graph");
+})();
+
 /* ── misc ───────────────────────────────────────────────────── */
 function toast(msg, bad) {
   $$(".toast").forEach((t) => t.remove());
@@ -1517,6 +1904,7 @@ function render() {
 
 if (token) { loadAll(); wfStartSse(); } else showGate();
 setTimer();
+boardPoll();
 </script>
 </body>
 </html>
