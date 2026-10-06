@@ -27,6 +27,18 @@ mention what this repo is NOT; code paths may not).
    state under `~/.agnostic-router-kit/`) need explicit user approval in the
    current turn.
 6. **Default operation target is `master`** for this repo.
+7. **The `/api/` block is operator-class.** App tokens act through `/v1`,
+   scoped by ceiling, workspace and run ownership — never give an `/api`
+   route to an app token, and keep it that way when adding routes.
+8. **`POST /api/keys` is write-only by contract.** Values go to the runtime
+   `.env` (chmod 600); a response may say whether a name resolves, never
+   what was written.
+9. **`copyRuntime`'s file filter carries the page shells by name**
+   (`dashboard.html`, `setup.html`, `chat.html`). A new `.html` in `router/`
+   must be added there or it never reaches an install.
+10. **`awaitOwnerMs` defaults to 0** — escalations resolve immediately unless
+   a spawner opts into the owner wait. Don't flip the default: existing
+   callers depend on degrade-fast.
 
 ## Branch topology
 
@@ -54,6 +66,10 @@ model, quota/usage/ledger, judge (typesafe | fastino | cascade), dashboard,
 service. Wave 1 = the neutral core (this repo, this commit). Wave 2 = portable
 workflow library + vendored skill trees. Wave 3 = proxy-internal swarm.
 Wave 4 = dev-decisions composition. See the extraction plan.
+2026-10-06 wave: `kit quickstart` (+ `lib/prompt.mjs`), `/setup` + `/chat`
+surfaces, the `/api/keys|setup|agents` control plane, owner-wait escalations
+(`awaitOwnerMs` in the plane), the Electron shell (`app/`), the Playwright
+visual probe (`tools/visual/`) — `docs/plans/2026-10-06-install-and-bot-surface.md`.
 
 ## Housekeeping
 

@@ -40,10 +40,19 @@ Body:
   "allowDomains": ["example.com"],
   "allowCommands": [],
   "answers": { "stack": "JavaScript on Node 24" },
+  "awaitOwnerMs": 300000,
   "model": "hard",
   "workdir": "sub/path"
 }
 ```
+
+`awaitOwnerMs` (default 0, capped at 24h) opts the spawn into the **owner
+wait**: an escalation that no recorded answer resolves holds the run open and
+polls the live answers file until the deadline, so a human can answer in the
+moment through the answers route. At the deadline it degrades to the recorded
+no-owner clause, exactly as an immediate spawn would have. Default 0 keeps
+today's degrade-fast behavior for existing callers; the chat surface spawns
+with five minutes.
 
 Response: `{ ok, runId, runDir }` — handed back before the run exists; the run id is the run directory's name, and `freeRunDir` still guards the same-second collision.
 
@@ -63,7 +72,7 @@ The run executes in-process through the same `runWorkflow` the CLI uses. Every e
 
 Body `{ topic, answer }`. Appends to `<runDir>/answers.jsonl` — the live half of the answers table, read by the engine at escalation fire time. No socket in the engine, the same file discipline as the journal itself.
 
-Precedence in `answerEscalation`: declared topic match, then live topic match, then declared substring, then live substring, then `askOwner`, then the no-owner clause. Every resolution journals its source (`declared` | `live` | `owner` | `none`) — the journal says who answered, not just what was answered.
+Precedence in `answerEscalation`: declared topic match, then live topic match, then declared substring, then live substring, then — when the spawn opted into `awaitOwnerMs` — a bounded hold on the live answers file (the in-the-moment answer), then `askOwner`, then the no-owner clause. Every resolution journals its source (`declared` | `live` | `owner` | `none`) — the journal says who answered, not just what was answered.
 
 Scoped like recall: an app answers only the runs it spawned; the operator answers any. Ownership survives a server restart because the journal, not process memory, is the record (`readRunOwner` re-derives it from the run-start line).
 

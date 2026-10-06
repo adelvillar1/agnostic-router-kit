@@ -148,6 +148,15 @@ Once the router runs, the terminal is optional:
 - **The desktop shell** (`app/`, Electron) opens `/chat` in its own window, starts the router when no service manages
   it, and dies with it when it does. `npm start` inside `app/`; `--preflight-check` verifies the non-GUI half.
 
+<p align="center">
+  <a href="docs/screens/chat-demo-dark.png"><img src="docs/screens/chat-demo-dark.png" alt="The chat surface, dark: a streamed reply with its routing verdict, a live deep-research run card, and the agents rail with an open escalation" width="820"></a><br>
+  <sub><b>/chat</b> — conversation + agent control plane ·
+  <a href="docs/screens/chat-live-escalation.png">live escalation</a> ·
+  <a href="docs/screens/chat-welcome-light.png">light</a> ·
+  <a href="docs/screens/setup-pending-dark.png">/setup</a> ·
+  <a href="docs/screens/">all seven states</a></sub>
+</p>
+
 ## Everyday use
 
 ```bash

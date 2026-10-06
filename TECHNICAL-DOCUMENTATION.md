@@ -16,7 +16,7 @@ This document describes how the kit is built. For what it does from a user's per
 5. [Router API Reference](#5-router-api-reference)
 6. [The Workflow Runtime](#6-the-workflow-runtime)
 7. [Local Security Model](#7-local-security-model)
-8. [Dashboard](#8-dashboard)
+8. [Surfaces — dashboard, chat, setup](#8-surfaces--dashboard-chat-setup)
 9. [Service & Lifecycle](#9-service--lifecycle)
 10. [Deployment (new machine)](#10-deployment-new-machine)
 11. [Development Workflow](#11-development-workflow)
@@ -37,7 +37,7 @@ The edition boundary: this repo shares the router's behavior with the ZCode edit
 
 ## 2. Tech Stack
 
-Node ≥ 20 (developed on 24), zero runtime dependencies for the router except the TypeSafe SDK for the judge, no build step for the dashboard (single vanilla-JS HTML file), plain CommonJS for the router and ESM for the kit's `lib/`. Tests are ad-hoc CLI smoke tests (`kit doctor`, curl, `kit workflows run`), not a suite.
+Node ≥ 20 (developed on 24), zero runtime dependencies for the router except the TypeSafe SDK for the judge, no build step and no framework anywhere — the three UI shells (`dashboard.html`, `chat.html`, `setup.html`) are hand-written single files and the desktop app (`app/`, Electron) is a thin launcher over the router's own pages. Plain CommonJS for the router, ESM for the kit's `lib/`. Verification is self-contained probe scripts (`tools/probe-*.mjs`, zero model calls; `tools/visual/` adds Playwright for the committed screenshots), not a test suite.
 
 ## 3. Architecture
 
@@ -138,22 +138,38 @@ Contract and porting rules: `docs/features/workflow-runtime.md`. The generator: 
 ## 7. Local Security Model
 
 - The router binds to `127.0.0.1` only; there are no user accounts, sessions, or roles — the machine boundary plus the bearer local token is the whole model.
+- **The `/api/` control plane is operator-class.** The routes that rewrite the roster (and re-run apply), read the ledger, enter keys, and list agents accept the operator token only — an app token gets `403` and acts through `/v1`, scoped by its ceiling, workspace and run ownership. (Before 2026-10-06 the block checked token validity alone; a token with an empty ceiling could rewrite the roster from the browser.)
+- **`POST /api/keys` is write-only by contract.** It merges `NAME=value` pairs into the runtime `.env` (line-wise, comments preserved, atomic, mode 600) and responds with `configured` booleans — a written value is never reflected back.
 - The run API adds a second token class: `roster.router.apps` rows (`name`, `token`, `grantCeiling`, optional `workdir`) are rendered into the runtime config beside `localToken`. An app token spawns runs under its ceiling — a grant outside it is refused by name and journaled — inside its own workspace root, and may answer or read artifacts only for runs it spawned. The operator token has no ceiling. Apps are explicit roster rows; there is no dynamic registration.
 - Upstream keys live only in `<kit home>/router/.env` (600). The roster references them by `apiKeyEnv` name; `roster.json` is committed and must never contain a raw key (`kit apply` warns if it does).
 - Workflow agents are confined to their run's workspace by path resolution, run commands from an allowlist with fixed argv (no shell, no globs, no substitution), and get capped output — a workflow cannot read the roster, the `.env`, or anything else on the machine.
 - A `billing: "payg"` provider is refused as a routing target without explicit `allowPayg: true`.
 
-## 8. Dashboard
+## 8. Surfaces — dashboard, chat, setup
 
-Single-file `router/dashboard.html`, served by the router at `/dashboard`, no build step. Tabs: usage per model/day (SSE live view over the ledger's recent-request ring), suggestions (`/api/suggest` ranks models by measured latency, errors, declared context, quota headroom, optional `strength`), and the workflow registry/library view with install state.
+All three shells are served by the router itself, hand-written, self-contained (no CDN, no build step, no framework), token-stamped at serve time, and rendered in a shared design language (dark and light, hairlines, one accent, mono data).
 
-Operational reference: `docs/features/dashboard.md`.
+- **`/dashboard`** — `router/dashboard.html`. Tabs: usage per model/day (SSE live view over the ledger's recent-request ring), suggestions (`/api/suggest` ranks models by measured latency, errors, declared context, quota headroom, optional `strength`), and the workflow registry/library view with install state. Operational reference: `docs/features/dashboard.md`.
+- **`/chat`** — `router/chat.html`. The chat (model `auto`, streamed, markdown rendered escape-first, the routing verdict under each reply) beside the **agent control plane**: every token holder with its ceiling, its live runs expandable to journal tails, and open escalations answerable in place. `?demo=1` renders a synthetic, badged conversation as a visual fixture. Operational reference: `docs/features/chat-surface.md`.
+- **`/setup`** — `router/setup.html`. The guided half of installation in the browser: the readiness checklist the router computes (`/api/setup`), write-only key entry (`/api/keys`), and connect-an-agent (mints an app token through `PUT /api/roster`).
 
 ## 9. Service & Lifecycle
 
 `kit apply` installs a **launchd user agent** (macOS) or **systemd user unit** (Linux) that keeps the router running and restarts it on failure; `kit apply` restarts it after re-rendering and health-checks `/healthz`. On other platforms the kit prints manual run instructions. Background jobs: none — the router is a single long-lived process; metering, quota windows, and cache eviction all happen in-process.
 
 ## 10. Deployment (new machine)
+
+The one-command path — it asks a few questions, runs the chain below, and ends
+with a green doctor and the page links:
+
+```bash
+git clone <repo> agnostic-router-kit && cd agnostic-router-kit
+node bin/agnostic-router-kit.mjs quickstart
+```
+
+Scripted installs take the same road without prompts
+(`kit quickstart --yes --skip-install --skip-service`). The manual path, for
+power users who want to see every gear:
 
 ```bash
 git clone <repo> agnostic-router-kit && cd agnostic-router-kit
@@ -181,6 +197,8 @@ The plan-build-recap-document cycle: feature plan in `docs/plans/`, implementati
 
 | Command | What it does |
 |---------|--------------|
+| `kit quickstart` | **the guided install** — asks a few questions (keys entered hidden), runs every step below, ends with a green doctor and the page links. `--yes` for scripted installs, `--force` to re-run over a healthy router, `--skip-install`, `--skip-service` (scratch homes, Windows, the desktop shell) |
+| `kit help` | the commands with their forms |
 | `kit status` | what is installed, where, and whether the service is up |
 | `kit init --template` | write a starter roster to edit |
 | `kit env set\|unset\|list` | manage the runtime `.env` (keys only, 600) |

@@ -48,7 +48,7 @@ Two token classes behind one gate is the whole security model. Everything else i
 | Guided setup | `router/setup.html` + `/api/setup` · `/api/keys` | the readiness checklist the router computes, write-only browser key entry, connect-an-agent |
 | Desktop shell | `app/main.mjs` (Electron) | preflight (kit found, deps, quickstart), attaches to a healthy service or owns the router as a child, opens `/chat` |
 | Service | `lib/service.mjs` | launchd (macOS) / systemd (Linux) user unit with keepalive |
-| Workflow plane | `lib/workflow/` (13 modules, resolved as a `file:` package) | the harnessed agent control plane: run state, judging and gates, tool grants and the world, transport, event journal and graph |
+| Workflow plane | `lib/workflow/` (14 modules, resolved as a `file:` package) | the harnessed agent control plane: run state, judging and gates, tool grants and the world, transport, event journal and graph |
 
 ## Data flow for the common request
 

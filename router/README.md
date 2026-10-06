@@ -187,6 +187,29 @@ an upstream entry, and the proxy reads the key live from
 rotated in `.env` or a provider edited in the roster takes effect without a
 restart (config.json is re-read on mtime change). No other file is consulted.
 
+## Surfaces
+
+The router serves three pages from itself — hand-written single files, no
+build step, stamped with the local token at serve time (same-origin operator
+convenience; the proxy routes keep their token gate):
+
+- **`/chat`** — a conversation with the router (`model: auto`, streamed,
+  markdown rendered, the routing verdict under each reply) beside the
+  **agent control plane**: every connected harness (anything holding an app
+  token), its live runs, and its open escalations — answerable right there.
+  `/run <workflow>` starts a plane run from the same input box. `?demo=1`
+  renders a synthetic, badged conversation (a visual fixture; no requests).
+- **`/setup`** — the guided half of installation in the browser: a readiness
+  checklist the router itself computes (`GET /api/setup`), key entry
+  (`POST /api/keys` — write-only: values go to the runtime `.env`, chmod 600,
+  and the response only says whether a name resolves), and connect-an-agent
+  (mints an app token, hands you base URL + token + `model: auto`).
+- **`/dashboard`** — the power console, below.
+
+The whole `/api/` block behind these pages is **operator-class**: an app
+token gets `403` there and acts through `/v1`, scoped by its ceiling,
+workspace and run ownership.
+
 ## Dashboard
 
 The router serves its own management UI at **`http://127.0.0.1:8300/dashboard`**
