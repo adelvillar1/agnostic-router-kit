@@ -12,7 +12,7 @@
       "url": "git@github.com:adelvillar1/agnostic-router-kit.git",
       "provider": "github",
       "link_mode": "local-only",
-      "revision": "daf55f4b89768afaa63acf2ddd22ce537fd81a39"
+      "revision": "7b43a404b5b8c425088ff1ca3cb1ffccde27a9fb"
     }
   },
   "lanes": [
@@ -80,8 +80,8 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 1518,
-          "end_line": 1525,
+          "line": 1774,
+          "end_line": 1781,
           "label": "run route"
         }
       ]
@@ -97,15 +97,15 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 1177,
-          "end_line": 1190,
-          "label": "authForRequest"
+          "line": 1694,
+          "end_line": 1704,
+          "label": "two token classes"
         },
         {
           "path": "router/server.js",
-          "line": 1690,
-          "end_line": 1696,
-          "label": "re-derive owner"
+          "line": 1235,
+          "end_line": 1247,
+          "label": "readRunOwner"
         }
       ]
     },
@@ -120,8 +120,8 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 1594,
-          "end_line": 1626,
+          "line": 1845,
+          "end_line": 1877,
           "label": "ceiling + workdir 403s"
         }
       ]
@@ -137,13 +137,13 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 1594,
+          "line": 1849,
           "label": "grant ceiling refusal"
         },
         {
           "path": "router/server.js",
-          "line": 1614,
-          "end_line": 1618,
+          "line": 1870,
+          "end_line": 1874,
           "label": "workdir outside root"
         }
       ]
@@ -211,8 +211,8 @@
         },
         {
           "path": "lib/workflow/engine.mjs",
-          "line": 952,
-          "end_line": 981,
+          "line": 953,
+          "end_line": 1002,
           "label": "answerEscalation"
         }
       ]
@@ -234,8 +234,8 @@
         },
         {
           "path": "lib/workflow/runstate.mjs",
-          "line": 42,
-          "end_line": 70,
+          "line": 58,
+          "end_line": 88,
           "label": "append over run dir"
         }
       ]
@@ -251,8 +251,8 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 1660,
-          "end_line": 1698,
+          "line": 1921,
+          "end_line": 1959,
           "label": "answers route"
         }
       ]
@@ -393,7 +393,7 @@
         "The run-start line records which app spawned the run.",
         "The answers and artifacts routes re-derive that owner on every request.",
         "A restart never loosens the gate and never strands a run.",
-        "router/server.js:1188 and 1715"
+        "router/server.js:1235 and 1921"
       ]
     },
     {
@@ -408,13 +408,14 @@
     },
     {
       "dot": "amber",
-      "title": "An escalation has five sources",
+      "title": "An escalation can hold for its owner",
       "items": [
         "A declared answer, then the live answers.jsonl row.",
         "Then a question-substring match against either.",
+        "Then the owner wait (awaitOwnerMs): the run holds open and the human answers over the wire.",
         "Then askOwner, then a recorded \"no owner\" answer.",
         "The source that resolved it is journalled.",
-        "lib/workflow/engine.mjs:952"
+        "lib/workflow/engine.mjs:953"
       ]
     },
     {

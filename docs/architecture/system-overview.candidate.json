@@ -3,7 +3,7 @@
   "diagram_type": "architecture",
   "meta": {
     "title": "agnostic-router-kit — system overview",
-    "subtitle": "One local process: an OpenAI-compatible router, the run API that spawns workflows, and the workflow plane it hosts.",
+    "subtitle": "One local process: an OpenAI-compatible router, the surfaces it serves, and the run API + workflow plane behind them.",
     "output": "docs/architecture/system-overview.html",
     "animation": "none",
     "visual_preset": "classic",
@@ -12,12 +12,43 @@
       "url": "git@github.com:adelvillar1/agnostic-router-kit.git",
       "provider": "github",
       "link_mode": "local-only",
-      "revision": "daf55f4b89768afaa63acf2ddd22ce537fd81a39"
+      "revision": "7b43a404b5b8c425088ff1ca3cb1ffccde27a9fb"
     },
     "views": [
-      { "id": "request", "label": "A chat request", "focus": ["clients", "server", "judge", "steering", "forward", "upstreams"] },
-      { "id": "run", "label": "A workflow run", "focus": ["runCallers", "runApi", "plane", "agents", "runsDir"] },
-      { "id": "install", "label": "kit apply", "focus": ["cli", "roster", "server"] }
+      {
+        "id": "request",
+        "label": "A chat request",
+        "focus": [
+          "clients",
+          "desktop",
+          "server",
+          "surfaces",
+          "judge",
+          "steering",
+          "forward",
+          "upstreams"
+        ]
+      },
+      {
+        "id": "run",
+        "label": "A workflow run",
+        "focus": [
+          "runCallers",
+          "runApi",
+          "plane",
+          "agents",
+          "runsDir"
+        ]
+      },
+      {
+        "id": "install",
+        "label": "kit apply",
+        "focus": [
+          "cli",
+          "roster",
+          "server"
+        ]
+      }
     ]
   },
   "components": [
@@ -27,26 +58,58 @@
       "label": "OpenAI-compatible client",
       "sublabel": "base URL :8300/v1",
       "icon": "person",
-      "pos": [20, 60],
-      "size": [196, 64]
+      "pos": [
+        20,
+        60
+      ],
+      "size": [
+        196,
+        64
+      ]
     },
     {
       "id": "server",
       "type": "backend",
       "label": "Router server",
       "sublabel": "runtime copy · 127.0.0.1:8300",
-      "sources": [{ "path": "router/server.js", "line": 1433, "end_line": 1445, "label": "one token gate" }],
-      "pos": [290, 60],
-      "size": [200, 72]
+      "sources": [
+        {
+          "path": "router/server.js",
+          "line": 1694,
+          "end_line": 1704,
+          "label": "one token gate"
+        }
+      ],
+      "pos": [
+        290,
+        60
+      ],
+      "size": [
+        200,
+        72
+      ]
     },
     {
       "id": "dashboard",
       "type": "frontend",
       "label": "Dashboard",
       "sublabel": "/dashboard · roster save-and-apply",
-      "sources": [{ "path": "router/server.js", "line": 1005, "end_line": 1049, "label": "save through the CLI" }],
-      "pos": [570, 60],
-      "size": [164, 64]
+      "sources": [
+        {
+          "path": "router/server.js",
+          "line": 1073,
+          "end_line": 1117,
+          "label": "save through the CLI"
+        }
+      ],
+      "pos": [
+        796,
+        60
+      ],
+      "size": [
+        164,
+        64
+      ]
     },
     {
       "id": "runApi",
@@ -54,11 +117,26 @@
       "label": "Run API wire",
       "sublabel": "/v1/runs · /answers · /artifacts",
       "sources": [
-        { "path": "router/server.js", "line": 1518, "label": "POST /v1/runs" },
-        { "path": "router/server.js", "line": 1659, "end_line": 1726, "label": "answers + artifacts" }
+        {
+          "path": "router/server.js",
+          "line": 1774,
+          "label": "POST /v1/runs"
+        },
+        {
+          "path": "router/server.js",
+          "line": 1920,
+          "end_line": 2050,
+          "label": "answers + artifacts"
+        }
       ],
-      "pos": [830, 60],
-      "size": [200, 72]
+      "pos": [
+        1000,
+        60
+      ],
+      "size": [
+        200,
+        72
+      ]
     },
     {
       "id": "runCallers",
@@ -66,17 +144,36 @@
       "label": "Run API callers",
       "sublabel": "apps + the operator",
       "icon": "person",
-      "pos": [1250, 60],
-      "size": [160, 64]
+      "pos": [
+        1284,
+        60
+      ],
+      "size": [
+        160,
+        64
+      ]
     },
     {
       "id": "judge",
       "type": "security",
       "label": "Judge",
       "sublabel": "typesafe · fastino · cascade",
-      "sources": [{ "path": "router/server.js", "line": 313, "end_line": 317, "label": "runJudge" }],
-      "pos": [330, 210],
-      "size": [176, 64]
+      "sources": [
+        {
+          "path": "router/server.js",
+          "line": 344,
+          "end_line": 361,
+          "label": "runJudge"
+        }
+      ],
+      "pos": [
+        330,
+        210
+      ],
+      "size": [
+        176,
+        64
+      ]
     },
     {
       "id": "steering",
@@ -84,29 +181,70 @@
       "label": "Quota steering",
       "sublabel": "walks the tier's chain",
       "sources": [
-        { "path": "router/server.js", "line": 119, "label": "steerSingle" },
-        { "path": "router/server.js", "line": 1063, "end_line": 1089, "label": "cooldowns" }
+        {
+          "path": "router/server.js",
+          "line": 121,
+          "label": "steerSingle"
+        },
+        {
+          "path": "router/server.js",
+          "line": 1107,
+          "end_line": 1130,
+          "label": "cooldowns"
+        }
       ],
-      "pos": [530, 210],
-      "size": [176, 64]
+      "pos": [
+        530,
+        210
+      ],
+      "size": [
+        176,
+        64
+      ]
     },
     {
       "id": "mixture",
       "type": "backend",
       "label": "Mixture",
       "sublabel": "parallel proposers, judged merge",
-      "sources": [{ "path": "router/server.js", "line": 395, "end_line": 408, "label": "mixtureTarget" }],
-      "pos": [780, 210],
-      "size": [160, 64]
+      "sources": [
+        {
+          "path": "router/server.js",
+          "line": 439,
+          "end_line": 453,
+          "label": "mixtureTarget"
+        }
+      ],
+      "pos": [
+        780,
+        210
+      ],
+      "size": [
+        160,
+        64
+      ]
     },
     {
       "id": "tools",
       "type": "backend",
       "label": "Run tools",
       "sublabel": "search · fetch · commands",
-      "sources": [{ "path": "lib/workflow/services.mjs", "line": 148, "end_line": 168, "label": "searchWeb" }],
-      "pos": [1130, 210],
-      "size": [176, 64]
+      "sources": [
+        {
+          "path": "lib/workflow/services.mjs",
+          "line": 148,
+          "end_line": 168,
+          "label": "searchWeb"
+        }
+      ],
+      "pos": [
+        1130,
+        210
+      ],
+      "size": [
+        176,
+        64
+      ]
     },
     {
       "id": "sys1",
@@ -114,72 +252,175 @@
       "label": "sys1 decide service",
       "sublabel": "127.0.0.1:8400",
       "icon": "external",
-      "sources": [{ "path": "lib/cli.mjs", "line": 208, "end_line": 211, "label": "sys1Health" }],
-      "pos": [280, 340],
-      "size": [176, 64]
+      "sources": [
+        {
+          "path": "lib/cli.mjs",
+          "line": 213,
+          "end_line": 228,
+          "label": "sys1Health"
+        }
+      ],
+      "pos": [
+        280,
+        340
+      ],
+      "size": [
+        176,
+        64
+      ]
     },
     {
       "id": "forward",
       "type": "backend",
       "label": "Forward",
       "sublabel": "thinking policy + upstream call",
-      "sources": [{ "path": "router/server.js", "line": 938, "label": "forward()" }],
-      "pos": [530, 340],
-      "size": [176, 64]
+      "sources": [
+        {
+          "path": "router/server.js",
+          "line": 982,
+          "label": "forward()"
+        }
+      ],
+      "pos": [
+        530,
+        340
+      ],
+      "size": [
+        176,
+        64
+      ]
     },
     {
       "id": "plane",
       "type": "backend",
       "label": "Workflow plane",
       "sublabel": "runWorkflow · phases · journal",
-      "sources": [{ "path": "lib/workflow/engine.mjs", "line": 84, "end_line": 142, "label": "runWorkflow + emit" }],
-      "pos": [980, 340],
-      "size": [200, 72]
+      "sources": [
+        {
+          "path": "lib/workflow/engine.mjs",
+          "line": 84,
+          "end_line": 142,
+          "label": "runWorkflow + emit"
+        }
+      ],
+      "pos": [
+        980,
+        340
+      ],
+      "size": [
+        200,
+        72
+      ]
     },
     {
       "id": "agents",
       "type": "backend",
       "label": "Sub-agents",
       "sublabel": "personas · scoped recall · delegation",
-      "sources": [{ "path": "lib/workflow/transport.mjs", "line": 53, "end_line": 55, "label": "call back through the router" }],
-      "pos": [1250, 340],
-      "size": [176, 64]
+      "sources": [
+        {
+          "path": "lib/workflow/transport.mjs",
+          "line": 53,
+          "end_line": 55,
+          "label": "call back through the router"
+        }
+      ],
+      "pos": [
+        1250,
+        340
+      ],
+      "size": [
+        176,
+        64
+      ]
     },
     {
       "id": "runsDir",
       "type": "database",
       "label": "workflow-runs/<run-id>/",
       "sublabel": "run.jsonl · answers.jsonl · artifacts/",
-      "sources": [{ "path": "lib/workflow/runstate.mjs", "line": 42, "end_line": 70, "label": "freeRunDir" }],
-      "pos": [980, 470],
-      "size": [200, 72]
+      "sources": [
+        {
+          "path": "lib/workflow/runstate.mjs",
+          "line": 58,
+          "end_line": 88,
+          "label": "run dirs + freeRunDir"
+        }
+      ],
+      "pos": [
+        980,
+        470
+      ],
+      "size": [
+        200,
+        72
+      ]
     },
     {
       "id": "cli",
       "type": "backend",
       "label": "kit CLI",
       "sublabel": "apply · doctor · workflows · env",
-      "sources": [{ "path": "lib/cli.mjs", "line": 373, "end_line": 451, "label": "cmdApply" }],
-      "pos": [20, 620],
-      "size": [176, 64]
+      "sources": [
+        {
+          "path": "lib/cli.mjs",
+          "line": 178,
+          "end_line": 455,
+          "label": "quickstart … cmdApply"
+        }
+      ],
+      "pos": [
+        20,
+        620
+      ],
+      "size": [
+        176,
+        64
+      ]
     },
     {
       "id": "roster",
       "type": "database",
       "label": "roster.json",
       "sublabel": "the machine: plans, tiers, profiles",
-      "sources": [{ "path": "roster.json", "line": 1, "end_line": 12, "label": "router + providers" }],
-      "pos": [270, 620],
-      "size": [176, 64]
+      "sources": [
+        {
+          "path": "roster.json",
+          "line": 1,
+          "end_line": 12,
+          "label": "router + providers"
+        }
+      ],
+      "pos": [
+        270,
+        620
+      ],
+      "size": [
+        176,
+        64
+      ]
     },
     {
       "id": "upstreams",
       "type": "cloud",
       "label": "Upstream plans",
       "sublabel": "OpenAI-compatible providers",
-      "sources": [{ "path": "roster.json", "line": 13, "end_line": 40, "label": "providers" }],
-      "pos": [530, 620],
-      "size": [176, 64]
+      "sources": [
+        {
+          "path": "roster.json",
+          "line": 13,
+          "end_line": 40,
+          "label": "providers"
+        }
+      ],
+      "pos": [
+        530,
+        620
+      ],
+      "size": [
+        176,
+        64
+      ]
     },
     {
       "id": "firecrawl",
@@ -187,38 +428,153 @@
       "label": "Firecrawl",
       "sublabel": "cloud search · self-hosted scrape",
       "icon": "external",
-      "sources": [{ "path": "lib/workflow/services.mjs", "line": 168, "label": "api.firecrawl.dev" }],
-      "pos": [980, 620],
-      "size": [176, 64]
+      "sources": [
+        {
+          "path": "lib/workflow/services.mjs",
+          "line": 168,
+          "label": "api.firecrawl.dev"
+        }
+      ],
+      "pos": [
+        980,
+        620
+      ],
+      "size": [
+        176,
+        64
+      ]
+    },
+    {
+      "id": "surfaces",
+      "type": "frontend",
+      "label": "Chat + setup",
+      "sublabel": "/chat · /setup · agent control plane",
+      "sources": [
+        {
+          "path": "router/server.js",
+          "line": 2202,
+          "end_line": 2233,
+          "label": "POST /api/keys — write-only"
+        },
+        {
+          "path": "router/server.js",
+          "line": 2234,
+          "end_line": 2262,
+          "label": "GET /api/setup · /api/agents"
+        }
+      ],
+      "pos": [
+        580,
+        60
+      ],
+      "size": [
+        176,
+        64
+      ]
+    },
+    {
+      "id": "desktop",
+      "type": "external",
+      "label": "Desktop shell",
+      "sublabel": "Electron · opens /chat · owns the process",
+      "icon": "external",
+      "sources": [
+        {
+          "path": "app/main.mjs",
+          "line": 90,
+          "end_line": 100,
+          "label": "preflight"
+        },
+        {
+          "path": "app/main.mjs",
+          "line": 147,
+          "end_line": 160,
+          "label": "owns the router process"
+        }
+      ],
+      "pos": [
+        20,
+        340
+      ],
+      "size": [
+        196,
+        64
+      ]
     }
   ],
   "boundaries": [
     {
       "kind": "security-group",
       "label": "One bearer gate · two token classes",
-      "wraps": ["server", "dashboard", "runApi"],
+      "wraps": [
+        "server",
+        "dashboard",
+        "surfaces",
+        "runApi"
+      ],
       "pad": 14
     },
     {
       "kind": "region",
       "label": "The workflow plane — in-process, journaled",
-      "wraps": ["plane", "agents", "tools", "runsDir"],
+      "wraps": [
+        "plane",
+        "agents",
+        "tools",
+        "runsDir"
+      ],
       "pad": 18
     },
     {
       "kind": "region",
       "label": "The kit repo — what you edit",
-      "wraps": ["cli", "roster"],
+      "wraps": [
+        "cli",
+        "roster"
+      ],
       "pad": 16
     }
   ],
   "connections": [
-    { "id": "req", "from": "clients", "to": "server", "label": ":8300/v1", "variant": "emphasis" },
-    { "id": "judge-ask", "from": "server", "to": "judge", "label": "one judgment per task, cached" },
-    { "id": "judge-sys1", "from": "judge", "to": "sys1", "label": "GLiNER2.5", "variant": "dashed" },
-    { "id": "verdict-mixture", "from": "steering", "to": "mixture", "label": "mixture" },
-    { "id": "verdict-forward", "from": "steering", "to": "forward", "label": "chosen candidate" },
-    { "id": "single-call", "from": "forward", "to": "upstreams", "label": "Bearer key", "variant": "emphasis" },
+    {
+      "id": "req",
+      "from": "clients",
+      "to": "server",
+      "label": ":8300/v1",
+      "variant": "emphasis"
+    },
+    {
+      "id": "judge-ask",
+      "from": "server",
+      "to": "judge",
+      "label": "one judgment per task, cached"
+    },
+    {
+      "id": "judge-sys1",
+      "from": "judge",
+      "to": "sys1",
+      "label": "GLiNER2.5",
+      "variant": "dashed"
+    },
+    {
+      "id": "verdict-mixture",
+      "from": "steering",
+      "to": "mixture",
+      "label": "mixture"
+    },
+    {
+      "id": "verdict-forward",
+      "from": "steering",
+      "to": "forward",
+      "label": "chosen candidate"
+    },
+    {
+      "id": "single-call",
+      "from": "forward",
+      "to": "upstreams",
+      "label": "Bearer key",
+      "variant": "emphasis"
+    },
     {
       "id": "mixture-call",
       "from": "mixture",
@@ -226,12 +582,45 @@
       "label": "parallel proposers",
       "fromSide": "bottom",
       "toSide": "right",
-      "via": [[860, 300], [930, 300], [930, 652]]
+      "via": [
+        [
+          860,
+          300
+        ],
+        [
+          930,
+          300
+        ],
+        [
+          930,
+          652
+        ]
+      ]
     },
-    { "id": "run-spawn", "from": "runCallers", "to": "runApi", "label": "app or operator token" },
-    { "id": "api-spawn", "from": "runApi", "to": "plane", "label": "spawns" },
-    { "id": "plane-fanout", "from": "plane", "to": "agents", "label": "fan-out" },
-    { "id": "plane-journal", "from": "plane", "to": "runsDir", "label": "run.jsonl + summary.json" },
+    {
+      "id": "run-spawn",
+      "from": "runCallers",
+      "to": "runApi",
+      "label": "spawn token"
+    },
+    {
+      "id": "api-spawn",
+      "from": "runApi",
+      "to": "plane",
+      "label": "spawns"
+    },
+    {
+      "id": "plane-fanout",
+      "from": "plane",
+      "to": "agents",
+      "label": "fan-out"
+    },
+    {
+      "id": "plane-journal",
+      "from": "plane",
+      "to": "runsDir",
+      "label": "run.jsonl + summary.json"
+    },
     {
       "id": "agents-artifacts",
       "from": "agents",
@@ -239,7 +628,16 @@
       "label": "artifacts",
       "fromSide": "bottom",
       "toSide": "right",
-      "via": [[1338, 506], [1180, 506]]
+      "via": [
+        [
+          1338,
+          506
+        ],
+        [
+          1180,
+          506
+        ]
+      ]
     },
     {
       "id": "tools-firecrawl",
@@ -248,18 +646,54 @@
       "label": "granted search + fetch",
       "fromSide": "right",
       "toSide": "right",
-      "via": [[1306, 242], [1450, 242], [1450, 652], [1156, 652]]
+      "via": [
+        [
+          1306,
+          242
+        ],
+        [
+          1450,
+          242
+        ],
+        [
+          1450,
+          652
+        ],
+        [
+          1156,
+          652
+        ]
+      ]
     },
-    { "id": "dash", "from": "server", "to": "dashboard", "label": "/dashboard" },
-    { "id": "roster-load", "from": "roster", "to": "cli", "label": "loads" },
+    {
+      "id": "dash",
+      "from": "server",
+      "to": "dashboard",
+      "label": "/dashboard"
+    },
+    {
+      "id": "roster-load",
+      "from": "roster",
+      "to": "cli",
+      "label": "loads"
+    },
     {
       "id": "install",
       "from": "cli",
       "to": "server",
-      "label": "install",
-      "fromSide": "right",
-      "toSide": "bottom",
-      "via": [[245, 652], [245, 170], [390, 170]]
+      "label": "install"
+    },
+    {
+      "id": "serv-surfaces",
+      "from": "server",
+      "to": "surfaces",
+      "label": "/chat · /setup"
+    },
+    {
+      "id": "desktop-open",
+      "from": "desktop",
+      "to": "surfaces",
+      "label": "opens /chat"
     }
   ],
   "cards": [
@@ -269,7 +703,9 @@
       "items": [
         "Operator: router.localToken — every route, no ceiling.",
         "Apps: a router.apps row — its own token, grant ceiling, and workspace root.",
-        "A spawn past the ceiling is a 403 that names the ceiling (router/server.js:1584)."
+        "The /api control plane is operator-only: an app token gets 403 there and acts through /v1.",
+        "POST /api/keys is write-only — the response says whether a name resolves, never the value (router/server.js:2202).",
+        "A spawn past the ceiling is a 403 that names the ceiling (router/server.js:1849)."
       ]
     },
     {
@@ -278,7 +714,7 @@
       "items": [
         "Copies router/ into the runtime dir; the service runs that copy, so git pull never moves it.",
         "Renders config.json from roster.json and writes env-var names into .env (chmod 600).",
-        "The dashboard saves through the same CLI, not a second copy (router/server.js:1005)."
+        "The dashboard saves through the same CLI, not a second copy (router/server.js:1073); kit quickstart runs the same steps with prompts."
       ]
     },
     {
