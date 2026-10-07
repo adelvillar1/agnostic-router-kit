@@ -51,3 +51,13 @@ true, not a list of phrases that must not.
 Plan closed with evidence blocks per criterion. The port to zcode-router-kit follows this recap; the promotion triggers
 (render-watch flip, shadow-router shortlist, dupe-merge application, memory-plane recall) each name their own evidence
 and stay out of scope until met.
+
+## Follow-up (same day, docs honesty pass)
+
+- **The loop count told straight** (`75b8163`): the README bullet led with "Seven loop shapes" and the FUNC-SPEC
+  paragraph mirrored it — accurate per-library but read as a total. Both now lead with **fifteen loops in three lanes**
+  (seven library shapes, six tabular, two semantic), with the sweep dedup head, router-eval annotations, and the shadow
+  router named as lane consumers rather than loops.
+- **The workflow inventory** (`4807c3b`): the README's plane section gained the full 39-file listing — 13 loop files
+  (with a loops column showing which file carries which of the fifteen), 9 one-pass workflows, 17 harness probes —
+  reconciled against the tree by count; the grants bullet gained the `semantic` grant beside `tabular`.
