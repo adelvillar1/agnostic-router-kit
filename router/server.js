@@ -993,9 +993,50 @@ async function attemptUpstream(res, body, signals, target, up, t0, attemptIndex,
   }
 }
 
+// Capability parity: a fallback that would silently drop a capability the
+// request carries (an image to a text-only model, tools to a no-tools model)
+// is worse than no fallback — so those candidates are excluded from the chain
+// entirely, BEFORE steering (steering would otherwise happily move a
+// parity-doomed candidate into the target slot; quota-healthy is not
+// request-capable). The steered/roster target itself is never second-guessed:
+// it is the judge's or the roster's pick. Undeclared caps gate nothing.
+function parityFilter(target, signals, t0) {
+  if (!Array.isArray(target.candidates) || target.kind === "mixture" || target.kind === "swarm") return target;
+  const doomed = (c) =>
+    (signals.images + signals.otherParts > 0 && c.caps?.images === false && "images") ||
+    (signals.toolDefs > 0 && c.caps?.tools === false && "tools") ||
+    null;
+  const excluded = [];
+  const kept = target.candidates.filter((c) => {
+    const why = doomed(c);
+    if (why) {
+      excluded.push([c, why]);
+      return false;
+    }
+    return true;
+  });
+  if (!excluded.length) return target;
+  for (const [c, why] of excluded) {
+    usage.record({
+      providerId: c.providerId,
+      model: c.model,
+      workload: target.workload,
+      execution: "single",
+      requested: signals.requestedModel,
+      reason: `parity:${why}`,
+      status: null,
+      ms: Date.now() - t0,
+      stream: signals.stream,
+    });
+    log({ event: "parity-skip", workload: target.workload, provider: c.providerId, model: c.model, capability: why });
+  }
+  return { ...target, candidates: kept };
+}
+
 async function forward(res, body, signals) {
   const t0 = Date.now();
   let target = await decide(signals);
+  target = parityFilter(target, signals, t0);
   target = steerSingle(target);
   const thinkLevel = thinkingPolicyFor(signals.requestedModel);
   if (target.kind === "mixture") {
@@ -2147,6 +2188,22 @@ const server = http.createServer((req, res) => {
             // material). Quota/billing/rate-limit failures deliberately do
             // not appear here — the key is not the thing that is exhausted.
             keyRejections: keyRejectionView(),
+            // Per-provider rollup of the roster's declared caps (all models
+            // true → true, any false with none true → false, undeclared →
+            // null). The dashboard renders this — never a control the chain
+            // cannot honour.
+            providerCaps: (() => {
+              const caps = R.capsByModel ?? {};
+              const roll = (models) => {
+                const pick = (k) => {
+                  const vs = (models ?? []).map((m) => caps[m]?.[k]).filter((v) => v !== undefined);
+                  return vs.length === 0 ? null : vs.every(Boolean);
+                };
+                const out = { images: pick("images"), tools: pick("tools") };
+                return out.images === null && out.tools === null ? null : out;
+              };
+              return Object.fromEntries(Object.entries(roster?.providers ?? {}).map(([id, p]) => [id, roll(p.models ?? [])]));
+            })(),
             // The workflow registry the judge routes into, plus the full
             // catalog — the surfaces that start runs list what can be started
             // rather than making the user guess names.

@@ -118,7 +118,7 @@ roster.providers = {
     baseUrl: `http://127.0.0.1:${FA_PORT}/v1`,
     apiKeyEnv: "FAKE_A_KEY",
     billing: "plan",
-    models: ["fake-ok", "fake-429ra5", "fake-401", "fake-500", "fake-400", "fake-stream"],
+    models: ["fake-ok", "fake-429ra5", "fake-401", "fake-500", "fake-400", "fake-stream", "fake-noimg-ok", "fake-notools-ok"],
   },
   fb: {
     providerName: "Fake B",
@@ -128,6 +128,13 @@ roster.providers = {
     models: ["fake-ok", "fake-500", "fake-stream"],
   },
 };
+// Capability facts for the parity gate: fa's declared-no-images and
+// declared-no-tools models are DISTINCT model ids, so the caps lookup (keyed
+// by model) never touches fb's.
+roster.manualModelRules = [
+  { modelId: "fake-noimg-ok", config: { properties: { supportsImages: false } } },
+  { modelId: "fake-notools-ok", config: { properties: { supportsTools: false } } },
+];
 roster.tiers = {
   quick: { target: "fb/fake-ok", fallbacks: [] },
   standard_code: { target: "fb/fake-ok", fallbacks: [] },
@@ -140,6 +147,7 @@ roster.tiers = {
   auth: { target: "fa/fake-401", fallbacks: ["fb/fake-ok"] },
   benchskip: { target: "fb/fake-500", fallbacks: ["fa/fake-ok"] },
   quota: { target: "fa/fake-402", fallbacks: [] },
+  toolswalk: { target: "fb/fake-429", fallbacks: ["fa/fake-notools-ok"] },
   streamy: { target: "fb/fake-stream", fallbacks: [] },
 };
 roster.profiles = {
@@ -149,9 +157,12 @@ roster.profiles = {
   au: { workload: "auth" },
   bs: { workload: "benchskip" },
   q2: { workload: "quota" },
+  tl: { workload: "toolswalk" },
   st: { workload: "streamy" },
 };
-roster.omniModel = ["fb/fake-ok"];
+// The image check rides the omni chain — capability rules route any image
+// part there regardless of a pinned profile, so the parity test shapes it.
+roster.omniModel = ["fb/fake-429", "fa/fake-noimg-ok"];
 roster.wideModel = ["fb/fake-ok"];
 roster.mixture = { proposers: ["fb/fake-ok"], aggregator: ["fb/fake-ok"], proposerTimeoutMs: 240000 };
 roster.routing = { wideChars: 1000000, minConfidence: 0.6, workflowMinConfidence: 0.4, defaultWorkload: "standard_code" };
@@ -239,6 +250,31 @@ try {
   const faAfter = (await hits(FA_PORT)).count;
   const fbAfter = (await hits(FB_PORT)).count;
   ok("exactly one upstream attempt happened (benched providers steered away)", faAfter + fbAfter - faBefore - fbBefore === 1, `fa ${faBefore}→${faAfter}, fb ${fbBefore}→${fbAfter}`);
+
+  console.log("\nP — capability parity: a doomed fallback is excluded, never tried");
+  const chatWith = async (model, extra, n) => {
+    const res = await api("POST", "/v1/chat/completions", {
+      token: OP_TOKEN,
+      body: { model, messages: [{ role: "user", content: `parity probe ${n}` }], ...extra },
+    });
+    const text = await res.text();
+    let json = null;
+    try { json = JSON.parse(text); } catch {}
+    return { status: res.status, text, json };
+  };
+  const faBeforeParity = (await hits(FA_PORT)).count;
+  const img = await chatWith(null, {
+    messages: [{ role: "user", content: [{ type: "text", text: "what is this" }, { type: "image_url", image_url: { url: "data:image/png;base64,aGVsbG8=" } }] }],
+  }, "img");
+  ok("the image walk loses its no-images fallback and 502s", img.status === 502 && /all 1 candidate\(s\).*last status 429/.test(img.json?.error?.message ?? ""), img.json?.error?.message);
+  ok("the no-images model was never sent the image", (await hits(FA_PORT)).count === faBeforeParity);
+  const tl = await chatWith("tl", { tools: [{ type: "function", function: { name: "probe", parameters: { type: "object", properties: {} } } }] }, "tl");
+  ok("the tools walk loses its no-tools fallback and 502s", tl.status === 502 && /all 1 candidate\(s\).*last status 429/.test(tl.json?.error?.message ?? ""), tl.json?.error?.message);
+  ok("the no-tools model was never sent the tool", (await hits(FA_PORT)).count === faBeforeParity);
+  const rowsParity = (await (await api("GET", "/api/usage", { token: OP_TOKEN })).json().catch(() => null))?.recent ?? [];
+  ok("the exclusions are on the ledger", rowsParity.some((r) => r.reason === "parity:images") && rowsParity.some((r) => r.reason === "parity:tools"));
+  const capsState = await (await api("GET", "/api/state", { token: OP_TOKEN })).json().catch(() => null);
+  ok("provider caps roll up per provider (fa declares, fb stays null)", capsState?.resolved?.providerCaps?.fa?.images === false && capsState?.resolved?.providerCaps?.fa?.tools === false && capsState?.resolved?.providerCaps?.fb === null, JSON.stringify(capsState?.resolved?.providerCaps));
 
   console.log("\nF — the ledger carries the walk");
   const usageRes = await api("GET", "/api/usage", { token: OP_TOKEN });

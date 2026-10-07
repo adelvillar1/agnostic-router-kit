@@ -314,7 +314,7 @@
       <h2>Providers</h2>
       <div class="sub">Enable/disable is a roster edit (Save &amp; apply on the Delegation tab lands it). Keys are env-var references on purpose — set them with <code>kit env set</code>, never in the UI, never in the roster.</div>
       <table id="providersTable"><thead><tr>
-        <th>Provider</th><th>Billing</th><th>Key</th><th>Enabled</th><th>Models</th>
+        <th>Provider</th><th>Billing</th><th>Key</th><th title="declared caps from manualModelRules — images / tools; – means undeclared">Caps</th><th>Enabled</th><th>Models</th>
       </tr></thead><tbody></tbody></table>
     </section>
   </div>
@@ -800,11 +800,17 @@ function renderWorkflows() {
 /* ── render: providers ──────────────────────────────────────── */
 function renderProviders() {
   const entries = Object.entries(state?.roster?.providers ?? {});
+  const capsOf = (id) => state?.resolved?.providerCaps?.[id] ?? null;
+  // Never show a control the chain cannot honour: a provider whose models all
+  // declare images/tools false renders ✗, all-true renders ✓, undeclared is
+  // the neutral dash — the same law the walk applies.
+  const cap = (v) => (v === true ? '<span style="color:var(--ok)">✓</span>' : v === false ? '<span style="color:var(--err)">✗</span>' : '<span class="dim">–</span>');
   $("#providersTable tbody").innerHTML = entries.map(([id, p]) => `
     <tr>
       <td><div>${esc(p.providerName ?? id)}</div><div class="hint mono-list">${esc(id)}</div></td>
       <td><span class="badge ${esc(p.billing ?? "plan")}">${esc(p.billing ?? "plan")}</span>${p.routerOnly ? ' <span class="badge ro">router-only</span>' : ""}</td>
       <td class="mono-list" style="color:${p.hasKey ? "var(--ok)" : "var(--err)"}">${p.hasKey ? "✓" : "✗"} <span class="dim">${esc(p.apiKeyEnv ?? "inline")}</span></td>
+      <td class="n">${cap(capsOf(id)?.images)} ${cap(capsOf(id)?.tools)}</td>
       <td><input type="checkbox" data-prov="${esc(id)}" ${p.enabled !== false ? "checked" : ""}></td>
       <td>${(p.models ?? []).map((m) => `<span class="chip">${esc(m)}</span>`).join("") || '<span class="dim">none registered</span>'}</td>
     </tr>`).join("");
