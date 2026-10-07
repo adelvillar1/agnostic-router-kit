@@ -23,11 +23,14 @@
  *   C   a 401 walks and benches the provider long (600s floor)
  *   B2  the bench skips the provider in FALLBACK position: a walk that would
  *       reach it 502s instead of touching it
+ *   Q   a quota-exhaustion body is a long bench but never a key rejection —
+ *       /api/state remembers the 401 as a key fault and the 402 not at all
  *   D   an all-failing chain yields the 502 envelope naming the chain length
  *       and last status, with exactly one upstream attempt (benched providers
  *       are steered away / skipped, not retried)
- *   F   the ledger rows carry the walk: +upstream-429/+upstream-401 reasons,
- *       the failover:1 success with the upstream-reported tokens
+ *   F   the ledger rows carry the walk: +upstream-429:rate / +upstream-401:key
+ *       / +upstream-402:quota reasons, the failover:1 success with the
+ *       upstream-reported tokens
  *   G   POST /route answers (the deduped handler, live on its real path)
  *   H   streaming relays untouched and is metered via the SSE tap
  *
@@ -136,6 +139,7 @@ roster.tiers = {
   allfail: { target: "fa/fake-500", fallbacks: ["fb/fake-500"] },
   auth: { target: "fa/fake-401", fallbacks: ["fb/fake-ok"] },
   benchskip: { target: "fb/fake-500", fallbacks: ["fa/fake-ok"] },
+  quota: { target: "fa/fake-402", fallbacks: [] },
   streamy: { target: "fb/fake-stream", fallbacks: [] },
 };
 roster.profiles = {
@@ -144,6 +148,7 @@ roster.profiles = {
   af: { workload: "allfail" },
   au: { workload: "auth" },
   bs: { workload: "benchskip" },
+  q2: { workload: "quota" },
   st: { workload: "streamy" },
 };
 roster.omniModel = ["fb/fake-ok"];
@@ -217,6 +222,15 @@ try {
   ok("a walk whose fallback is benched 502s", bs.status === 502, `status ${bs.status}`);
   ok("the benched fallback was never touched", (await hits(FA_PORT)).count === 3, JSON.stringify(await hits(FA_PORT)));
 
+  console.log("\nQ — a quota-exhaustion body is not a key fault (single-model tier never steers)");
+  const q2 = await chat("q2", { n: 1 });
+  ok("the quota-benched provider still serves its pinned single-model tier", q2.status === 502 && /all 1 candidate\(s\).*last status 402/.test(q2.json?.error?.message ?? ""), q2.json?.error?.message);
+  ok("fa attempted once for the 402", (await hits(FA_PORT)).count === 4);
+  const state = await (await api("GET", "/api/state", { token: OP_TOKEN })).json().catch(() => null);
+  const rejections = state?.resolved?.keyRejections ?? [];
+  ok("the 401 is remembered as a key rejection", rejections.some((e) => e.providerId === "fa" && e.status === 401 && e.count === 1), JSON.stringify(rejections));
+  ok("the 402 is NOT remembered as a key rejection", !rejections.some((e) => e.status === 402), JSON.stringify(rejections));
+
   console.log("\nD — an all-failing chain yields the 502 envelope");
   const faBefore = (await hits(FA_PORT)).count;
   const fbBefore = (await hits(FB_PORT)).count;
@@ -230,8 +244,9 @@ try {
   const usageRes = await api("GET", "/api/usage", { token: OP_TOKEN });
   const usageJson = await usageRes.json().catch(() => null);
   const rows = usageJson?.recent ?? [];
-  ok("the 429 is on the ledger", rows.some((r) => r.status === 429 && /\+upstream-429$/.test(r.reason ?? "")), JSON.stringify(rows.slice(0, 3)));
-  ok("the 401 is on the ledger", rows.some((r) => r.status === 401 && /\+upstream-401$/.test(r.reason ?? "")));
+  ok("the 429 is on the ledger, classified as rate", rows.some((r) => r.status === 429 && /\+upstream-429:rate$/.test(r.reason ?? "")), JSON.stringify(rows.slice(0, 3)));
+  ok("the 401 is on the ledger, classified as key", rows.some((r) => r.status === 401 && /\+upstream-401:key$/.test(r.reason ?? "")));
+  ok("the 402 is on the ledger, classified as quota", rows.some((r) => r.status === 402 && /\+upstream-402:quota$/.test(r.reason ?? "")));
   ok("the walked success records failover:1 with the reported tokens", rows.some((r) => r.status === 200 && r.reason === "failover:1" && r.promptTokens === 11 && r.completionTokens === 7));
 
   console.log("\nG — POST /route answers (the deduped handler, live)");
