@@ -387,12 +387,6 @@ export function createSwarm(deps) {
    * A missing gate is not a hang and not a blank check: the part is accepted
    * with the failure recorded, because dropping good work on an unavailable
    * gate is the worse error.
-   */
-  /**
-   * Per-part accept/revise. Gate first, revise once, then accept or drop.
-   * A missing gate is not a hang and not a blank check: the part is accepted
-   * with the failure recorded, because dropping good work on an unavailable
-   * gate is the worse error.
    *
    * The gate asks ONE holistic question per part — does the part satisfy its
    * instruction and acceptance criteria — not one check per criterion. The
