@@ -25,6 +25,20 @@ grant default-off, batch-only) + six loops — quota-forecast, flake-watch,
 calibrate-floors, risk-composed review, triage eval, fleet-watch — over
 tables the kit already produces — see docs/plans/2026-10-07-tabular-loops.md
 and docs/features/tabular-decisions.md.
+2026-10-07 semantic wave: `world.semantic` (dev-decisions embeddings lane, `semantic`
+grant default-off, batch-only, `--json` injected; verbs semantic-index/dedup/nn) + the
+shadow law — dupe-watch (report-only calibration dedup), render-watch (pixel shadow,
+nothing skipped), review-sweep dedup head (repeats annotated, never dropped),
+router-eval neighbor annotations, semroute-shadow (fire-and-forget router logger,
+nothing reads its return) — see docs/plans/2026-10-07-semantic-loops.md and
+docs/features/semantic-lane.md.
+2026-10-07 semantic wave: `world.semantic` (dev-decisions embeddings lane, `semantic`
+grant default-off, batch-only, `--json` injected; verbs semantic-index/dedup/nn) + the
+shadow law — dupe-watch (report-only calibration dedup), render-watch (pixel shadow,
+nothing skipped), review-sweep dedup head (repeats annotated, never dropped),
+router-eval neighbor annotations, semroute-shadow (fire-and-forget router logger,
+nothing reads its return) — see docs/plans/2026-10-07-semantic-loops.md and
+docs/features/semantic-lane.md.
 # agnostic-router-kit — house rules
 
 This repo is the harness-agnostic edition: the router and roster are neutral

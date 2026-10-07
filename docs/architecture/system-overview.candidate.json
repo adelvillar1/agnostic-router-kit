@@ -12,7 +12,7 @@
       "url": "git@github.com:adelvillar1/agnostic-router-kit.git",
       "provider": "github",
       "link_mode": "local-only",
-      "revision": "3c74a4b6f86450a02be1e5825342ecb37d62cb02"
+      "revision": "be3659aa1af8f23b96731abf9942cb5c7c190e18"
     },
     "views": [
       {
@@ -75,8 +75,8 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 1776,
-          "end_line": 1786,
+          "line": 1788,
+          "end_line": 1798,
           "label": "one token gate"
         }
       ],
@@ -97,8 +97,8 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 1108,
-          "end_line": 1132,
+          "line": 1120,
+          "end_line": 1144,
           "label": "save through the CLI"
         }
       ],
@@ -119,13 +119,13 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 1915,
+          "line": 1927,
           "label": "POST /v1/runs"
         },
         {
           "path": "router/server.js",
-          "line": 2061,
-          "end_line": 2160,
+          "line": 2073,
+          "end_line": 2172,
           "label": "answers + artifacts"
         }
       ],
@@ -161,8 +161,8 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 351,
-          "end_line": 368,
+          "line": 357,
+          "end_line": 374,
           "label": "runJudge"
         }
       ],
@@ -183,13 +183,13 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 128,
+          "line": 134,
           "label": "steerSingle"
         },
         {
           "path": "router/server.js",
-          "line": 1172,
-          "end_line": 1208,
+          "line": 1178,
+          "end_line": 1214,
           "label": "cooldowns"
         }
       ],
@@ -210,8 +210,8 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 446,
-          "end_line": 460,
+          "line": 452,
+          "end_line": 466,
           "label": "mixtureTarget"
         }
       ],
@@ -232,8 +232,8 @@
       "sources": [
         {
           "path": "lib/workflow/services.mjs",
-          "line": 450,
-          "end_line": 483,
+          "line": 534,
+          "end_line": 567,
           "label": "searchWeb"
         }
       ],
@@ -273,7 +273,7 @@
       "id": "devdec",
       "type": "external",
       "label": "dev-decisions · sdm1",
-      "sublabel": "calibration store · the tabular lane",
+      "sublabel": "calibration · tabular + semantic lanes",
       "icon": "external",
       "sources": [
         {
@@ -298,6 +298,41 @@
       ]
     },
     {
+      "id": "sem1",
+      "type": "external",
+      "label": "sem1 · embeddings",
+      "sublabel": "llama-server · st-worker images",
+      "icon": "external",
+      "sources": [
+        {
+          "path": "lib/workflow/services.mjs",
+          "line": 316,
+          "end_line": 353,
+          "label": "semantic"
+        },
+        {
+          "path": "workflows/dupe-watch.ts",
+          "line": 89,
+          "end_line": 146,
+          "label": "near-dupe phase"
+        },
+        {
+          "path": "router/semroute-shadow.mjs",
+          "line": 77,
+          "end_line": 136,
+          "label": "makeSemrouteShadow"
+        }
+      ],
+      "pos": [
+        520,
+        436
+      ],
+      "size": [
+        200,
+        64
+      ]
+    },
+    {
       "id": "forward",
       "type": "backend",
       "label": "Forward",
@@ -305,7 +340,7 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 1043,
+          "line": 1055,
           "label": "forward()"
         }
       ],
@@ -459,7 +494,7 @@
       "sources": [
         {
           "path": "lib/workflow/services.mjs",
-          "line": 374,
+          "line": 458,
           "label": "duckduckgo · firecrawl"
         }
       ],
@@ -480,14 +515,14 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 2357,
-          "end_line": 2388,
+          "line": 2369,
+          "end_line": 2400,
           "label": "POST /api/keys — write-only"
         },
         {
           "path": "router/server.js",
-          "line": 2393,
-          "end_line": 2445,
+          "line": 2405,
+          "end_line": 2457,
           "label": "GET /api/setup · /api/agents"
         }
       ],
@@ -543,7 +578,7 @@
         },
         {
           "path": "router/server.js",
-          "line": 2400,
+          "line": 2412,
           "label": "/api/memory · /v1/memory"
         }
       ],
@@ -751,6 +786,13 @@
       "from": "judge",
       "to": "devdec",
       "label": "calibration rows",
+      "variant": "dashed"
+    },
+    {
+      "id": "judge-sem1",
+      "from": "judge",
+      "to": "sem1",
+      "label": "sem1_raw rows",
       "variant": "dashed"
     }
   ],

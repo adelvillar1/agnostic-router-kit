@@ -89,3 +89,35 @@ The dev-decisions batch lane (2026-10-07): forecast bands, flake scores, revert-
   reality, and treat a band crossing as a prompt to reconcile the two reads —
   the loop escalates so an owner can answer, not because it measured the
   console.
+
+## Semantic lane / world.semantic
+
+The dev-decisions embeddings lane (2026-10-07): vector index, near-dupe pairs, nearest graded neighbors behind the
+`semantic` grant, default-off ([`docs/features/semantic-lane.md`](features/semantic-lane.md)).
+
+- **A semantic loop says unavailable.** Four absences wear the same "proceeds
+  without it" shape, and the log line names which: *dev-decisions missing* (the
+  pinned refusal — "dev-decisions not installed — the semantic grant needs the
+  dev-decisions CLI with sem1"; remediation: install the CLI or point
+  `DEV_DECISIONS_BIN` at it), *sem1 not importable* (the CLI answers "sem1 not
+  importable — set DEV_DECISIONS_SEM1_PATH"; remediation: install
+  `~/Projects/sem1` or set the env var), *embedding server down* (llama-server
+  on 127.0.0.1:8901 unreachable; remediation:
+  `launchctl kickstart -k gui/$(id -u)/com.adelvillar1.sem1-llama`), and *no
+  index* ("no index — run `dev-decisions semantic-index` first"; the calibration
+  index grows only when the command runs — 26 of 6509 rows carried recoverable
+  text at first index, the rest are redacted-only and invisible to geometry by
+  design). Fail-open by design: sweep unchanged, eval unchanged, nothing
+  skipped.
+- **The shadow router disagrees with the judge.** Expected — that disagreement
+  is the data the logger exists to collect (eval-only rows in `router/logs/`,
+  `kind: "semroute-shadow"`, `applied: false`). The logger cannot steer: its
+  tap is fire-and-forget after the judge's verdict and nothing reads its
+  return. Remediation: none — accrue the rows; a fitted agreement floor is
+  what would earn a real shortlist, in a later wave.
+- **dupe-watch reports a pair I know is not a dupe.** Near-dupe is over
+  *surrogate* text — what each redacted row still references (plan files,
+  claims, notes), keyed by row sha — so two rows sharing a plan file can land
+  close without their inputs being similar. Every pair is a lead to confirm,
+  never a fact, and nothing merges without an owner. Remediation: none —
+  dispute the pair; the report is the record.

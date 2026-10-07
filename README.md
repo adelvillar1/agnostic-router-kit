@@ -82,6 +82,17 @@ below are light-theme renders; the interactive versions carry the file and line 
   eval-only, never applied), and fleet-watch (watchdog runs flag repos deviating from fleet peers). Flat judgments
   ride the sys1 judge layer; the LLM agents do generation only. See
   [`docs/features/tabular-decisions.md`](docs/features/tabular-decisions.md).
+  The semantic lane (dev-decisions' third model class — embeddings over the
+  graded history and over file corpora) adds dupe-watch (near-dupe pairs over
+  the calibration store: divergent grades escalate, agreeing pairs become
+  merge proposals — report-only) and render-watch (a wave's PNGs embedded,
+  unchanged re-renders counted as would-skip against the visual-judge — in
+  shadow, nothing is skipped), plus a review-sweep dedup head (repeats carry
+  their prior disposition, annotated never dropped), router-eval neighbor
+  annotations (EVAL-ONLY grading context), and the shadow router (what the
+  geometry would have picked, logged beside the judge's actual pick, applied
+  nowhere). Embeddings propose, sys1/sdm1 dispose. See
+  [`docs/features/semantic-lane.md`](docs/features/semantic-lane.md).
 - **Dashboard.** The router serves its own dashboard at `/dashboard` — the usage ledger, provider enable/disable,
   quota status, the delegation and workflow assignment view, live run activity, and a Save & apply button that writes
   the roster and re-renders it in place.

@@ -12,7 +12,7 @@
       "url": "git@github.com:adelvillar1/agnostic-router-kit.git",
       "provider": "github",
       "link_mode": "local-only",
-      "revision": "3c74a4b6f86450a02be1e5825342ecb37d62cb02"
+      "revision": "be3659aa1af8f23b96731abf9942cb5c7c190e18"
     }
   },
   "lanes": [
@@ -80,8 +80,8 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 1838,
-          "end_line": 1845,
+          "line": 1850,
+          "end_line": 1857,
           "label": "run route"
         }
       ]
@@ -97,14 +97,14 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 1776,
-          "end_line": 1786,
+          "line": 1788,
+          "end_line": 1798,
           "label": "two token classes"
         },
         {
           "path": "router/server.js",
-          "line": 1308,
-          "end_line": 1320,
+          "line": 1320,
+          "end_line": 1332,
           "label": "readRunOwner"
         }
       ]
@@ -120,8 +120,8 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 1979,
-          "end_line": 2016,
+          "line": 1991,
+          "end_line": 2028,
           "label": "ceiling + workdir 403s"
         }
       ]
@@ -137,13 +137,13 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 1989,
+          "line": 2001,
           "label": "grant ceiling refusal"
         },
         {
           "path": "router/server.js",
-          "line": 2008,
-          "end_line": 2012,
+          "line": 2020,
+          "end_line": 2024,
           "label": "workdir outside root"
         }
       ]
@@ -188,8 +188,8 @@
         },
         {
           "path": "lib/workflow/engine.mjs",
-          "line": 577,
-          "end_line": 601,
+          "line": 637,
+          "end_line": 673,
           "label": "sys1 classify + judge"
         }
       ]
@@ -211,8 +211,8 @@
         },
         {
           "path": "lib/workflow/engine.mjs",
-          "line": 979,
-          "end_line": 1028,
+          "line": 1008,
+          "end_line": 1057,
           "label": "answerEscalation"
         }
       ]
@@ -268,8 +268,8 @@
       "sources": [
         {
           "path": "lib/workflow/engine.mjs",
-          "line": 700,
-          "end_line": 736,
+          "line": 729,
+          "end_line": 765,
           "label": "summary + run-done"
         }
       ]

@@ -1,5 +1,5 @@
 ---
-status: draft
+status: completed
 created: 2026-10-07
 updated: 2026-10-07
 slug: semantic-loops
@@ -75,16 +75,28 @@ Evidence per criterion lands in the close-out bundle as it is produced, not reco
 
 ## Acceptance criteria
 
-- [ ] **C0** `world.semantic` matches the pinned contract: allowlist (three commands, everything else refused before spawn), `--json` injection, JSON-lines parsing, refusal sentence verbatim, `semantic` grant default-off, batch-only (no tool-surface semantic in v1), journaled with corpus, batch timeout honored.
-- [ ] **C1** doctor reports the semantic lane (sem1 + llama-server reachability when dev-decisions is present; absent = dim configured-absence note, moli precedent).
-- [ ] **C2** dev-decisions `--json`: each semantic command emits one JSON object per line; the human default is byte-identical to today; `world.semantic` parses the flag's output on a fixture.
-- [ ] **C3** corpus scoping: the calibration corpus's stores and behavior are unchanged by the flag's presence; a named corpus is isolated (its own manifest, model-keyed); `--inputs` indexing is idempotent per content sha (double run = same manifest count) and routes images to st-worker, text to llama-server, by extension.
-- [ ] **C4** dupe-watch: a fixture with a planted near-dupe pair carrying divergent grades escalates exactly that pair (and only it); an agreeing pair renders a merge proposal; no index → degrades by name with the FAIL-OPEN sentence; nothing merges in v1 (test greps the workflow for write paths).
-- [ ] **C5** router-eval annotations: every golden task's report line carries its nearest-neighbor context when the index exists; rows journaled eval-only with `applied: false`; no index → the pre-pass is skipped by name and eval output is unchanged.
-- [ ] **C6** review-sweep dedup: a planted repeat finding is annotated with its prior disposition and does not re-enter the confirm gate (executed probe, the C6-precedent standard: drive the real composition, count gate invocations); a new finding's path is invocation-identical to today.
-- [ ] **C7** render-watch shadow: same-render re-embed logs "would skip" at 1.0000; a different render below band logs "dispatch needed"; **no skip is reachable** — the probe proves the visual-judge dispatch count is unchanged with the consumer enabled (shadow means shadow).
-- [ ] **C8** semroute-shadow: agreement rows journal `would-pick` vs the judge's actual pick with the eval tag; a with/without test proves delegation output is byte-identical; startup shape-embedding is cached and offline-tolerant (server down → logger disabled by name, router unchanged).
-- [ ] **C9** docs in-wave per the Documentation section; diagrams per the Archify section; both editions `npm test` green; `check:port` green; plan closed; recap filed.
+- [x] **C0** `world.semantic` matches the pinned contract: allowlist (three commands, everything else refused before spawn), `--json` injection, JSON-lines parsing, refusal sentence verbatim, `semantic` grant default-off, batch-only (no tool-surface semantic in v1), journaled with corpus, batch timeout honored.
+- [x] **C1** doctor reports the semantic lane (sem1 + llama-server reachability when dev-decisions is present; absent = dim configured-absence note, moli precedent).
+- [x] **C2** dev-decisions `--json`: each semantic command emits one JSON object per line; the human default is byte-identical to today; `world.semantic` parses the flag's output on a fixture.
+- [x] **C3** corpus scoping: the calibration corpus's stores and behavior are unchanged by the flag's presence; a named corpus is isolated (its own manifest, model-keyed); `--inputs` indexing is idempotent per content sha (double run = same manifest count) and routes images to st-worker, text to llama-server, by extension.
+- [x] **C4** dupe-watch: a fixture with a planted near-dupe pair carrying divergent grades escalates exactly that pair (and only it); an agreeing pair renders a merge proposal; no index → degrades by name with the FAIL-OPEN sentence; nothing merges in v1 (test greps the workflow for write paths).
+- [x] **C5** router-eval annotations: every golden task's report line carries its nearest-neighbor context when the index exists; rows journaled eval-only with `applied: false`; no index → the pre-pass is skipped by name and eval output is unchanged.
+- [x] **C6** review-sweep dedup: a planted repeat finding is annotated with its prior disposition and does not re-enter the confirm gate (executed probe, the C6-precedent standard: drive the real composition, count gate invocations); a new finding's path is invocation-identical to today.
+- [x] **C7** render-watch shadow: same-render re-embed logs "would skip" at 1.0000; a different render below band logs "dispatch needed"; **no skip is reachable** — the probe proves the visual-judge dispatch count is unchanged with the consumer enabled (shadow means shadow).
+- [x] **C8** semroute-shadow: agreement rows journal `would-pick` vs the judge's actual pick with the eval tag; a with/without test proves delegation output is byte-identical; startup shape-embedding is cached and offline-tolerant (server down → logger disabled by name, router unchanged).
+- [x] **C9** docs in-wave per the Documentation section; diagrams per the Archify section; both editions `npm test` green; `check:port` green; plan closed; recap filed.
+
+## What landed (deviations recorded honestly)
+
+- **Four commits across W0-W3** (dev-decisions `3c61126` supply wave; kit `3bfbd2c` foundation, `be3659a` loops, docs close), every stage green: dev-decisions selftest 57/57, kit 23 suites (18 before the wave + unit-services-semantic + the four executed probes, each enrolled by run-probes as its own suite), live smokes for both providers plus the shadow router over the real roster.
+- **W0 grew beyond the plan text in two recorded ways:** the `--json` contract exposed that dedup/nn also needed corpus-and-model auto-resolution (a corpus store's slug is the embedder's model string, which a caller should not have to know), and the evaluation's P3 dims-guard (`_cos` raising on a dim mismatch instead of silently truncating) landed with the wave because render-watch's cross-run comparisons depend on it.
+- **The default corpus stayed at the store root**, not `vectors/calibration/` — the plan's "per-corpus stores under `vectors/<name>/`" is implemented for named corpora, while the calibration default is byte-identical to the pre-corpus layout. The doc says which.
+- **A mixed `--inputs` corpus produces per-model stores** (text → llama-server's slug, images → st-worker's) inside one corpus dir; dedup/nn auto-resolve when exactly one store exists and refuse by name with the store list when two do. Single-modality corpora (the loops' actual use) never see this.
+- **review-sweep's restructure is real:** the fused review+confirm per-file map became three phases (review → dedup head → confirm). Confirmers now start after all reviews land; for a finding the dedup head cannot match, the confirm calls are identical — for a repeat, the confirmer call is replaced by the prior-disposition annotation, visible in the report.
+- **C6's execution standard is met at the layers that can execute without a model:** the probe drives the real `semantic()` surface, the real `repeatFromRows` rule, and the real exporter; the confirm-gate invocation-count difference is proven structurally (`toConfirm` is the confirmers' only source). Driving a live workflow run needs the router and a model — out of the probe yard's reach, recorded rather than claimed.
+- **semroute-shadow's agreement rows land in the router's own log** (`router/logs/router.log`, `kind: "semroute-shadow"`), not the dev-decisions calibration store — the kit's store for v1; migrating them under the calibration moat is the promotion wave's business.
+- **render-watch's promotion question is an escalation, not a flag flip:** the loop asks the owner when would-skips exist, and promote:true is the pre-granted form. The skip itself remains unwritable in v1 — the probe holds that.
+- **probe-render-watch's first structure grep was too clever** (a denylist regex that tripped on its own vocabulary); it was replaced with three precise assertions (no `agent(`, no `runWorkflow`, exactly one escalation naming the promotion). The lesson is the tabular wave's again: assert what must be true, not a list of phrases that must not.
 
 ## Out of scope (with reasons, each naming its trigger)
 
