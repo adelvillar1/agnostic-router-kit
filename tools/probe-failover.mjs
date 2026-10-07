@@ -126,6 +126,7 @@ roster.providers = {
     apiKeyEnv: "FAKE_B_KEY",
     billing: "plan",
     models: ["fake-ok", "fake-500", "fake-stream"],
+    pricing: { inputPerM: 3, outputPerM: 15 },
   },
 };
 // Capability facts for the parity gate: fa's declared-no-images and
@@ -284,6 +285,10 @@ try {
   ok("the 401 is on the ledger, classified as key", rows.some((r) => r.status === 401 && /\+upstream-401:key$/.test(r.reason ?? "")));
   ok("the 402 is on the ledger, classified as quota", rows.some((r) => r.status === 402 && /\+upstream-402:quota$/.test(r.reason ?? "")));
   ok("the walked success records failover:1 with the reported tokens", rows.some((r) => r.status === 200 && r.reason === "failover:1" && r.promptTokens === 11 && r.completionTokens === 7));
+  const priced = rows.find((r) => r.reason === "failover:1" && r.model === "fake-ok");
+  ok("the priced row costs from the declared price list", priced && priced.costUsd === 0.000138 && priced.costSource === "price-list", JSON.stringify(priced));
+  ok("the priced row is attributed to the operator token", priced?.trigger === "operator", priced?.trigger);
+  ok("a provider without declared prices shows no cost (never estimated)", rows.some((r) => r.providerId === "fa" && r.status === 400 && r.costUsd === null && r.costSource === null));
 
   console.log("\nG — POST /route answers (the deduped handler, live)");
   const route = await api("POST", "/route", { token: OP_TOKEN, body: { task: "probe the topology verdict" } });

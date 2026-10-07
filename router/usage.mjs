@@ -51,7 +51,7 @@ function emptyState() {
   };
 }
 
-export function createUsage({ file, weightOf } = {}) {
+export function createUsage({ file, weightOf, priceOf } = {}) {
   const weight = (providerId, ts) => {
     try { return weightOf?.(providerId, ts) ?? 1; } catch { return 1; }
   };
@@ -95,9 +95,13 @@ export function createUsage({ file, weightOf } = {}) {
   /**
    * Record one upstream attempt. `entry`:
    *   { providerId, model, workload, execution, requested, reason, status,
-   *     ms, promptTokens, completionTokens, stream, sessionKey }
+   *     ms, promptTokens, completionTokens, stream, sessionKey, trigger }
    * Tokens may be null when the upstream did not report usage — the call is
-   * still counted, with tokensKnown left unincremented.
+   * still counted, with tokensKnown left unincremented. `trigger` is the
+   * token class that brought the request ("operator" | "app:<name>") — who
+   * spent this. Cost is computed at this single chokepoint from the live
+   * price table (declared per provider/model in the roster); it is never
+   * estimated — no price declared, no costUsd on the row.
    */
   function record(entry) {
     const ts = Date.now();
@@ -109,6 +113,11 @@ export function createUsage({ file, weightOf } = {}) {
     const status = Number.isFinite(entry.status) ? entry.status : null;
     const ok = status !== null && status < 400;
     const hasTokens = Number.isFinite(entry.promptTokens) || Number.isFinite(entry.completionTokens);
+    const price = priceOf?.(providerId, model) ?? null;
+    const costUsd = price
+      ? ((Number.isFinite(entry.promptTokens) ? entry.promptTokens : 0) / 1e6) * price.inputPerM +
+        ((Number.isFinite(entry.completionTokens) ? entry.completionTokens : 0) / 1e6) * price.outputPerM
+      : null;
 
     const recent = {
       at: ts,
@@ -124,6 +133,9 @@ export function createUsage({ file, weightOf } = {}) {
       completionTokens: Number.isFinite(entry.completionTokens) ? entry.completionTokens : null,
       stream: Boolean(entry.stream),
       reason: entry.reason ?? null,
+      trigger: entry.trigger ?? null,
+      costUsd: costUsd === null ? null : Math.round(costUsd * 1e9) / 1e9,
+      costSource: costUsd === null ? null : "price-list",
     };
     state.recent.unshift(recent);
 

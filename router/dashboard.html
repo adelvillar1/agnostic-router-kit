@@ -228,7 +228,7 @@
       <h2>Recent requests <button class="btn" id="resetUsage" style="float:right">Reset counters</button></h2>
       <div class="sub">Last 100 routed calls, newest first. Message content is never recorded — only routing metadata and usage.</div>
       <table id="recentTable"><thead><tr>
-        <th>Time</th><th>Requested</th><th>Workload</th><th>Exec</th><th>Model</th><th class="n">ms</th><th class="n">P / C tok</th><th class="n">Status</th><th>Reason</th>
+        <th>Time</th><th>Requested</th><th>Workload</th><th>Exec</th><th>Model</th><th class="n">ms</th><th class="n">P / C tok</th><th class="n">Cost</th><th>Who</th><th class="n">Status</th><th>Reason</th>
       </tr></thead><tbody></tbody></table>
     </section>
   </div>
@@ -645,6 +645,10 @@ function renderUsage() {
     const model = r.providerId && r.model ? `${r.providerId}/${r.model}` : "—";
     const tok = (r.promptTokens ?? r.completionTokens) != null ? `${r.promptTokens ?? "—"} / ${r.completionTokens ?? "—"}` : "—";
     const stat = r.status == null ? "—" : r.status;
+    // costUsd is declared-price only (costSource "price-list") — a dash means
+    // no price declared, never an estimate.
+    const cost = r.costUsd != null ? `$${r.costUsd < 0.001 ? r.costUsd.toExponential(1) : r.costUsd.toFixed(4)}` : "—";
+    const who = r.trigger ? (r.trigger === "operator" ? "operator" : esc(r.trigger.replace(/^app:/, "app · "))) : "—";
     return `<tr>
       <td class="dim">${new Date(r.at).toLocaleTimeString()}</td>
       <td class="mono-list">${esc(r.requested ?? "auto")}</td>
@@ -653,10 +657,12 @@ function renderUsage() {
       <td class="mono-list">${esc(model)}</td>
       <td class="n">${r.ms != null ? fmtInt(r.ms) : "—"}</td>
       <td class="n">${esc(tok)}</td>
+      <td class="n" title="${esc(r.costSource ?? "no price declared")}">${cost}</td>
+      <td class="dim">${who}</td>
       <td class="n" ${r.status >= 400 ? 'style="color:var(--err)"' : ""}>${esc(String(stat))}</td>
       <td class="dim">${esc(r.reason ?? "")}</td>
     </tr>`;
-  }).join("") || `<tr><td colspan="9" class="dim">nothing routed yet</td></tr>`;
+  }).join("") || `<tr><td colspan="11" class="dim">nothing routed yet</td></tr>`;
 }
 
 $("#resetUsage").onclick = async () => {

@@ -77,6 +77,7 @@ function refreshConfig() {
 const usage = createUsage({
   file: path.join(LOG_DIR, "usage.json"),
   weightOf: (pid, ts) => offpeakWeight(cachedRoster()?.providers?.[pid]?.quota, ts),
+  priceOf: (pid, model) => config.pricing?.[`${pid}/${model}`] ?? config.pricing?.[model] ?? null,
 });
 const DASHBOARD_FILE = path.join(__dirname, "dashboard.html");
 const SETUP_FILE = path.join(__dirname, "setup.html");
@@ -650,15 +651,16 @@ async function aggregate(labeled, signals, body, think = { level: "auto", style:
   return merged;
 }
 
-async function handleMixture(res, body, signals, execution = "mixture", thinkLevel = "auto") {
+async function handleMixture(res, body, signals, execution = "mixture", thinkLevel = "auto", trigger = null) {
   const t0 = Date.now();
+  const rec = (entry) => usage.record({ ...entry, trigger });
   const mix = R.mixture ?? {};
   const think = (p) => ({ level: thinkLevel, style: thinkingStyleFor(p.providerId) });
   const proposers = mix.proposers ?? [];
   const results = await Promise.all(
     proposers.map((p) =>
       chatNonStream(p, body, mix.proposerTimeoutMs, (status, us, why) =>
-        usage.record({
+        rec({
           providerId: p.providerId,
           model: p.model,
           workload: "mixture",
@@ -677,7 +679,7 @@ async function handleMixture(res, body, signals, execution = "mixture", thinkLev
     .map((g, i) => (g ? { label: String(i + 1), providerId: proposers[i]?.providerId ?? null, ...g } : null))
     .filter(Boolean);
   if (labeled.length === 0) {
-    usage.record({ workload: "mixture", execution, requested: signals.requestedModel, status: 502, ms: Date.now() - t0, reason: "mixture:all-proposers-failed", stream: signals.stream });
+    rec({ workload: "mixture", execution, requested: signals.requestedModel, status: 502, ms: Date.now() - t0, reason: "mixture:all-proposers-failed", stream: signals.stream });
     res.writeHead(502, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: { message: "mixture: all proposers failed" } }));
     log({ event: "mixture", error: "all-proposers-failed", sessionKey: signals.sessionKey, requested: signals.requestedModel });
@@ -696,7 +698,7 @@ async function handleMixture(res, body, signals, execution = "mixture", thinkLev
       finalModel = agg.model;
       finalProviderId = R.mixture?.aggregator?.providerId ?? finalProviderId;
       merged = true;
-      usage.record({
+      rec({
         providerId: R.mixture?.aggregator?.providerId ?? null,
         model: agg.model,
         workload: "mixture",
@@ -730,7 +732,7 @@ async function handleMixture(res, body, signals, execution = "mixture", thinkLev
   // Every model that did work gets credit for the tokens it spent — the
   // losing proposers too, because a prepaid plan pays for them all the same.
   for (const l of labeled) {
-    usage.record({
+    rec({
       providerId: l.providerId,
       model: l.model,
       workload: "mixture",
@@ -835,7 +837,7 @@ function rewriteBody(body, model, thinking = { level: "auto", style: null }) {
 // failures (400/404 …), which pass through as-is because every other candidate
 // would fail the same way. Returns sent=false for failover-able failures
 // (quota/auth/server) so the caller can walk the tier's chain.
-async function attemptUpstream(res, body, signals, target, up, t0, attemptIndex, thinkLevel) {
+async function attemptUpstream(res, body, signals, target, up, t0, attemptIndex, thinkLevel, trigger = null) {
   const failover = attemptIndex > 0;
   const ac = new AbortController();
   res.on("close", () => {
@@ -888,6 +890,7 @@ async function attemptUpstream(res, body, signals, target, up, t0, attemptIndex,
         status: u.status,
         ms: Date.now() - t0,
         stream: signals.stream,
+        trigger,
       });
       return { sent: false, status: u.status };
     }
@@ -938,6 +941,7 @@ async function attemptUpstream(res, body, signals, target, up, t0, attemptIndex,
           promptTokens: meter.promptTokens,
           completionTokens: meter.completionTokens,
           stream: true,
+          trigger,
         });
       };
       res.on("finish", settle);
@@ -967,6 +971,7 @@ async function attemptUpstream(res, body, signals, target, up, t0, attemptIndex,
       promptTokens: pt,
       completionTokens: ct,
       stream: false,
+      trigger,
     });
     res.writeHead(u.status, {
       "Content-Type": u.headers.get("content-type") ?? "application/json",
@@ -987,6 +992,7 @@ async function attemptUpstream(res, body, signals, target, up, t0, attemptIndex,
       status: 502,
       ms: Date.now() - t0,
       stream: signals.stream,
+      trigger,
     });
     log({ event: "route", error: "upstream-failed", provider: target.providerId, model: target.model, attempt: attemptIndex, ms: Date.now() - t0, detail: String(err?.message ?? err).slice(0, 160) });
     return { sent: false, status: null };
@@ -1000,7 +1006,7 @@ async function attemptUpstream(res, body, signals, target, up, t0, attemptIndex,
 // parity-doomed candidate into the target slot; quota-healthy is not
 // request-capable). The steered/roster target itself is never second-guessed:
 // it is the judge's or the roster's pick. Undeclared caps gate nothing.
-function parityFilter(target, signals, t0) {
+function parityFilter(target, signals, t0, trigger = null) {
   if (!Array.isArray(target.candidates) || target.kind === "mixture" || target.kind === "swarm") return target;
   const doomed = (c) =>
     (signals.images + signals.otherParts > 0 && c.caps?.images === false && "images") ||
@@ -1027,20 +1033,21 @@ function parityFilter(target, signals, t0) {
       status: null,
       ms: Date.now() - t0,
       stream: signals.stream,
+      trigger,
     });
     log({ event: "parity-skip", workload: target.workload, provider: c.providerId, model: c.model, capability: why });
   }
   return { ...target, candidates: kept };
 }
 
-async function forward(res, body, signals) {
+async function forward(res, body, signals, trigger = null) {
   const t0 = Date.now();
   let target = await decide(signals);
-  target = parityFilter(target, signals, t0);
+  target = parityFilter(target, signals, t0, trigger);
   target = steerSingle(target);
   const thinkLevel = thinkingPolicyFor(signals.requestedModel);
   if (target.kind === "mixture") {
-    await handleMixture(res, body, signals, target.execution ?? "mixture", thinkLevel);
+    await handleMixture(res, body, signals, target.execution ?? "mixture", thinkLevel, trigger);
     return;
   }
   if (target.kind === "swarm") {
@@ -1074,10 +1081,11 @@ async function forward(res, body, signals) {
         providerId: cand.providerId, model: cand.model, workload: target.workload,
         execution: target.execution ?? "single", requested: signals.requestedModel,
         reason: `failover:${i}:unknown-upstream`, status: 502, ms: Date.now() - t0, stream: signals.stream,
+        trigger,
       });
       continue;
     }
-    const out = await attemptUpstream(res, body, signals, { ...target, ...cand }, up, t0, i, thinkLevel);
+    const out = await attemptUpstream(res, body, signals, { ...target, ...cand }, up, t0, i, thinkLevel, trigger);
     if (out.sent) return;
     lastStatus = out.status;
   }
@@ -1817,7 +1825,10 @@ const server = http.createServer((req, res) => {
       }
       const signals = analyze(body);
       try {
-        await forward(res, body, signals);
+        // Attributed to the token class that brought it — operator or the
+        // named app — so the ledger can answer "who spent this".
+        const trigger = caller.operator ? "operator" : `app:${caller.app?.name ?? "unknown"}`;
+        await forward(res, body, signals, trigger);
       } catch (err) {
         log({ event: "route", error: "handler:" + String(err?.message ?? err).slice(0, 120) });
         if (!res.headersSent) {
