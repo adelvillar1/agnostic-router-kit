@@ -12,7 +12,7 @@
       "url": "git@github.com:adelvillar1/agnostic-router-kit.git",
       "provider": "github",
       "link_mode": "local-only",
-      "revision": "2a077df6cf40dabc99e3afefebc33a2703f253c4"
+      "revision": "3e51469bfd85e0f303c321f123a128cbde26b2ad"
     },
     "views": [
       {
@@ -228,12 +228,12 @@
       "id": "tools",
       "type": "backend",
       "label": "Run tools",
-      "sublabel": "search · fetch · commands",
+      "sublabel": "search · fetch · render · commands",
       "sources": [
         {
           "path": "lib/workflow/services.mjs",
-          "line": 148,
-          "end_line": 168,
+          "line": 374,
+          "end_line": 407,
           "label": "searchWeb"
         }
       ],
@@ -255,8 +255,8 @@
       "sources": [
         {
           "path": "lib/cli.mjs",
-          "line": 213,
-          "end_line": 228,
+          "line": 219,
+          "end_line": 234,
           "label": "sys1Health"
         }
       ],
@@ -431,8 +431,8 @@
       "sources": [
         {
           "path": "lib/workflow/services.mjs",
-          "line": 168,
-          "label": "api.firecrawl.dev"
+          "line": 298,
+          "label": "duckduckgo · firecrawl"
         }
       ],
       "pos": [
@@ -515,7 +515,7 @@
         },
         {
           "path": "router/server.js",
-          "line": 2402,
+          "line": 2400,
           "label": "/api/memory · /v1/memory"
         }
       ],
@@ -659,7 +659,7 @@
       "id": "tools-firecrawl",
       "from": "tools",
       "to": "firecrawl",
-      "label": "granted search + fetch",
+      "label": "granted search + fetch + render",
       "fromSide": "right",
       "toSide": "right",
       "via": [

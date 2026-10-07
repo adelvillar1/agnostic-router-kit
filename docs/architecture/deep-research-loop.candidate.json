@@ -12,7 +12,7 @@
       "url": "git@github.com:adelvillar1/agnostic-router-kit.git",
       "provider": "github",
       "link_mode": "local-only",
-      "revision": "daf55f4b89768afaa63acf2ddd22ce537fd81a39"
+      "revision": "3e51469bfd85e0f303c321f123a128cbde26b2ad"
     }
   },
   "lanes": [
@@ -82,8 +82,8 @@
       "sources": [
         {
           "path": "workflows/deep-research.ts",
-          "line": 111,
-          "end_line": 120,
+          "line": 130,
+          "end_line": 139,
           "label": "planner agent"
         }
       ]
@@ -99,14 +99,14 @@
       "sources": [
         {
           "path": "workflows/deep-research.ts",
-          "line": 145,
-          "end_line": 158,
+          "line": 166,
+          "end_line": 179,
           "label": "budget check per search"
         },
         {
           "path": "lib/workflow/engine.mjs",
-          "line": 388,
-          "end_line": 389,
+          "line": 393,
+          "end_line": 394,
           "label": "spentCredits"
         }
       ]
@@ -122,14 +122,14 @@
       "sources": [
         {
           "path": "workflows/deep-research.ts",
-          "line": 155,
-          "end_line": 158,
+          "line": 176,
+          "end_line": 179,
           "label": "world.search"
         },
         {
           "path": "lib/workflow/engine.mjs",
-          "line": 423,
-          "end_line": 441,
+          "line": 428,
+          "end_line": 446,
           "label": "search binding + meter"
         }
       ]
@@ -139,20 +139,20 @@
       "lane": "ext",
       "col": 2,
       "type": "cloud",
-      "label": "Self-hosted scrape",
-      "sublabel": "the operator's Firecrawl, free",
+      "label": "Read the candidates",
+      "sublabel": "moli first · Firecrawl falls back · fetch last",
       "width": 227,
       "sources": [
         {
           "path": "workflows/deep-research.ts",
-          "line": 165,
-          "end_line": 176,
+          "line": 190,
+          "end_line": 206,
           "label": "scrapeBudget per round"
         },
         {
           "path": "lib/workflow/services.mjs",
-          "line": 219,
-          "end_line": 219,
+          "line": 421,
+          "end_line": 421,
           "label": "scrape endpoint"
         }
       ]
@@ -168,14 +168,14 @@
       "sources": [
         {
           "path": "workflows/deep-research.ts",
-          "line": 181,
-          "end_line": 206,
+          "line": 211,
+          "end_line": 236,
           "label": "one scout per question"
         },
         {
           "path": "workflows/deep-research.ts",
-          "line": 91,
-          "end_line": 91,
+          "line": 110,
+          "end_line": 110,
           "label": "web_search denied"
         }
       ]
@@ -191,14 +191,14 @@
       "sources": [
         {
           "path": "workflows/deep-research.ts",
-          "line": 96,
-          "end_line": 109,
+          "line": 115,
+          "end_line": 128,
           "label": "judge spec"
         },
         {
           "path": "workflows/deep-research.ts",
-          "line": 218,
-          "end_line": 238,
+          "line": 248,
+          "end_line": 268,
           "label": "judge call + one-way rule"
         }
       ]
@@ -214,8 +214,8 @@
       "sources": [
         {
           "path": "workflows/deep-research.ts",
-          "line": 242,
-          "end_line": 255,
+          "line": 272,
+          "end_line": 285,
           "label": "reflection"
         }
       ]
@@ -231,8 +231,8 @@
       "sources": [
         {
           "path": "workflows/deep-research.ts",
-          "line": 277,
-          "end_line": 293,
+          "line": 308,
+          "end_line": 324,
           "label": "stop reasons"
         }
       ]
@@ -248,14 +248,14 @@
       "sources": [
         {
           "path": "workflows/deep-research.ts",
-          "line": 296,
-          "end_line": 341,
+          "line": 327,
+          "end_line": 372,
           "label": "writer, reader, artifacts"
         },
         {
           "path": "workflows/deep-research.ts",
-          "line": 260,
-          "end_line": 267,
+          "line": 290,
+          "end_line": 297,
           "label": "ledger per round"
         }
       ]

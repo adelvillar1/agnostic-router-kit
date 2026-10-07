@@ -12,7 +12,7 @@
       "url": "git@github.com:adelvillar1/agnostic-router-kit.git",
       "provider": "github",
       "link_mode": "local-only",
-      "revision": "3d700bcf16cf59e44fff2c7fe871560f5f3d49b7"
+      "revision": "3e51469bfd85e0f303c321f123a128cbde26b2ad"
     }
   },
   "lanes": [
@@ -80,8 +80,8 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 1774,
-          "end_line": 1781,
+          "line": 1838,
+          "end_line": 1845,
           "label": "run route"
         }
       ]
@@ -97,14 +97,14 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 1694,
-          "end_line": 1704,
+          "line": 1776,
+          "end_line": 1786,
           "label": "two token classes"
         },
         {
           "path": "router/server.js",
-          "line": 1235,
-          "end_line": 1247,
+          "line": 1308,
+          "end_line": 1320,
           "label": "readRunOwner"
         }
       ]
@@ -120,8 +120,8 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 1845,
-          "end_line": 1877,
+          "line": 1979,
+          "end_line": 2016,
           "label": "ceiling + workdir 403s"
         }
       ]
@@ -137,13 +137,13 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 1849,
+          "line": 1989,
           "label": "grant ceiling refusal"
         },
         {
           "path": "router/server.js",
-          "line": 1870,
-          "end_line": 1874,
+          "line": 2008,
+          "end_line": 2012,
           "label": "workdir outside root"
         }
       ]
@@ -182,14 +182,14 @@
       "sources": [
         {
           "path": "lib/workflow/engine.mjs",
-          "line": 332,
-          "end_line": 334,
+          "line": 336,
+          "end_line": 338,
           "label": "agent binding"
         },
         {
           "path": "lib/workflow/engine.mjs",
-          "line": 551,
-          "end_line": 575,
+          "line": 555,
+          "end_line": 579,
           "label": "sys1 classify + judge"
         }
       ]
@@ -211,8 +211,8 @@
         },
         {
           "path": "lib/workflow/engine.mjs",
-          "line": 953,
-          "end_line": 1002,
+          "line": 957,
+          "end_line": 1006,
           "label": "answerEscalation"
         }
       ]
@@ -251,8 +251,8 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 1921,
-          "end_line": 1959,
+          "line": 2062,
+          "end_line": 2100,
           "label": "answers route"
         }
       ]
@@ -268,8 +268,8 @@
       "sources": [
         {
           "path": "lib/workflow/engine.mjs",
-          "line": 662,
-          "end_line": 667,
+          "line": 678,
+          "end_line": 714,
           "label": "summary + run-done"
         }
       ]
