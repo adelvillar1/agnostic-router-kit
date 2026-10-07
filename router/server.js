@@ -2122,15 +2122,13 @@ const server = http.createServer((req, res) => {
             // The workflow registry the judge routes into, plus the full
             // catalog — the surfaces that start runs list what can be started
             // rather than making the user guess names.
-            workflows: R.workflows ?? {},
+            workflows: R.workflows ?? [],
             workflowLibrary: Array.isArray(config.workflowLibrary) ? config.workflowLibrary : [],
             thresholds: {
               wideChars: R.wideChars ?? null,
               minConfidence: R.minConfidence ?? null,
               workflowMinConfidence: R.workflowMinConfidence ?? null,
             },
-            workflows: R.workflows ?? [],
-            workflowLibrary: config.workflowLibrary ?? null,
           },
           quota: {
             minHeadroom: R.quotaMinHeadroom ?? 0.4,

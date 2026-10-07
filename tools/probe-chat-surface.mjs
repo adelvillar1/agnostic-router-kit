@@ -117,6 +117,11 @@ try {
   }
   if (!up) throw new Error(`scratch server never came up${serverErr ? `: ${serverErr.slice(0, 500)}` : ""}`);
 
+  console.log("\nS — /api/state shape contracts (the deduped workflows pair)");
+  const state = await call("GET", "/api/state", { token: OP_TOKEN });
+  ok("state.resolved.workflows is an array", Array.isArray(state.json?.resolved?.workflows), typeof state.json?.resolved?.workflows);
+  ok("state.resolved.workflowLibrary is an array", Array.isArray(state.json?.resolved?.workflowLibrary), typeof state.json?.resolved?.workflowLibrary);
+
   // SSE first, so the spawn's own events are captured.
   const seen = [];
   const sse = await fetch(`http://127.0.0.1:${PORT}/api/workflow-events?token=${encodeURIComponent(OP_TOKEN)}`, { headers: { accept: "text/event-stream" } });
