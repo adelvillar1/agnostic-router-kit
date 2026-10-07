@@ -12,7 +12,7 @@
       "url": "git@github.com:adelvillar1/agnostic-router-kit.git",
       "provider": "github",
       "link_mode": "local-only",
-      "revision": "3d700bcf16cf59e44fff2c7fe871560f5f3d49b7"
+      "revision": "2a077df6cf40dabc99e3afefebc33a2703f253c4"
     },
     "views": [
       {
@@ -75,8 +75,8 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 1694,
-          "end_line": 1704,
+          "line": 1776,
+          "end_line": 1786,
           "label": "one token gate"
         }
       ],
@@ -97,8 +97,8 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 1073,
-          "end_line": 1117,
+          "line": 1108,
+          "end_line": 1132,
           "label": "save through the CLI"
         }
       ],
@@ -119,13 +119,13 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 1774,
+          "line": 1915,
           "label": "POST /v1/runs"
         },
         {
           "path": "router/server.js",
-          "line": 1920,
-          "end_line": 2050,
+          "line": 2061,
+          "end_line": 2160,
           "label": "answers + artifacts"
         }
       ],
@@ -161,8 +161,8 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 344,
-          "end_line": 361,
+          "line": 351,
+          "end_line": 368,
           "label": "runJudge"
         }
       ],
@@ -183,13 +183,13 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 121,
+          "line": 128,
           "label": "steerSingle"
         },
         {
           "path": "router/server.js",
-          "line": 1107,
-          "end_line": 1130,
+          "line": 1172,
+          "end_line": 1208,
           "label": "cooldowns"
         }
       ],
@@ -210,8 +210,8 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 439,
-          "end_line": 453,
+          "line": 446,
+          "end_line": 460,
           "label": "mixtureTarget"
         }
       ],
@@ -277,7 +277,7 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 982,
+          "line": 1043,
           "label": "forward()"
         }
       ],
@@ -452,14 +452,14 @@
       "sources": [
         {
           "path": "router/server.js",
-          "line": 2202,
-          "end_line": 2233,
+          "line": 2357,
+          "end_line": 2388,
           "label": "POST /api/keys — write-only"
         },
         {
           "path": "router/server.js",
-          "line": 2234,
-          "end_line": 2262,
+          "line": 2393,
+          "end_line": 2445,
           "label": "GET /api/setup · /api/agents"
         }
       ],
@@ -515,7 +515,7 @@
         },
         {
           "path": "router/server.js",
-          "line": 2234,
+          "line": 2402,
           "label": "/api/memory · /v1/memory"
         }
       ],
