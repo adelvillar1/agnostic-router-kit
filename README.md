@@ -191,7 +191,8 @@ generated. Commit the roster — it holds env-var *names*, never values — and 
   optional `billing`, `featured[]`, `routerOnly`, `quota`, `contextWindow`. Per-model strength lives at the top level
   under `strength`.
 - **tiers** — an ordered candidate chain per workload tier. The chain walk is quota-aware: a candidate that is cool
-  ing down, over its allowance, or lacking a key is skipped and the skip is journalled.
+  ing down, over its allowance, lacking a key, or declared (top-level `manualModelRules`, per model: `supportsImages`,
+  `supportsTools`, `contextWindow`) to lack a capability the request carries is skipped and the skip is journalled.
 - **profiles** — named routing decisions on top of the judge: pin a tier, force mixture on a profile name, or route a
   literal target.
 - **router.apps** — the second token class (see below): `token`, `grantCeiling`, `workdir`/workspace root.
@@ -213,9 +214,14 @@ One `POST /v1/chat/completions` with `model: "auto"`:
    outage degrades to the default workload and the request is still served.
 4. **Execution**: a single call; or parallel proposers plus an integration judgment (mixture); or a delegate to a
    workflow in the library.
-5. **Tier chain walk**: quota-aware candidate order; upstream `402/403/408/429/5xx` or a connection failure moves to the
-   next candidate and opens a cooldown bench.
-6. **Metering**: every attempt — won, diverted, lost — lands in the usage ledger; verdict headers ride the response.
+5. **Tier chain walk**: quota-aware candidate order; parity first — a fallback that declares it lacks a capability the
+   request carries (images, tools) is excluded before steering. Upstream `402/403/408/429/5xx` or a connection failure
+   is classified (`router/failclass.mjs`: usage-limit vocabulary before the 429 pattern — a subscription cap is a quota,
+   not a rate limit; quota/billing bodies are never a key fault; a model gap walks without benching), then moves to the
+   next candidate and opens a bench per its class; roster cooldown overrides win first. A benched provider steers as
+   zero headroom.
+6. **Metering**: every attempt — won, diverted, lost, parity-excluded — lands in the usage ledger with its failure
+   class and trigger (operator / `app:<name>`); verdict headers ride the response.
 
 ## The run API
 
@@ -284,8 +290,9 @@ roster.json                  the machine: providers (keys by env name), tiers, p
 templates/roster.defaults.json   starter roster for `kit init --template`
 bin/agnostic-router-kit.mjs  the `kit` CLI
 lib/                         roster model + resolution, render, .env, service, CLI, prompts, the MCP memory server
-lib/workflow/                the plane: 14 modules — engine, runstate, checkpoint, tools, services,
-                             transport, events, graph, harness, meta, schema, coerce, context, gitworld
+lib/workflow/                the plane: 16 modules — engine, runstate, checkpoint, tools, services,
+                             transport, events, graph, harness, meta, schema, coerce, context, gitworld,
+                             memory (the durable store), atomic (its writes)
 router/                      the proxy: server.js, quota, usage, suggest, swarm, fastino (sys1),
                              failclass (the failure vocabulary), atomic (durable writes),
                              dashboard.html, setup.html, chat.html

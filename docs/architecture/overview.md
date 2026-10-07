@@ -40,7 +40,9 @@ Two token classes behind one gate is the whole security model. Everything else i
 | Router | `router/server.js` | OpenAI-compatible proxy on `127.0.0.1:8300` (`node:http`, no framework) |
 | Run API | `router/server.js` | `POST /v1/runs`, `POST /v1/runs/<id>/answers`, `GET /v1/runs/<id>/artifacts` |
 | Judge | `router/fastino.mjs` + `@typesafe-ai/sdk` | one verdict per task; fail-open above the HTTP layer |
-| Quota and usage | `router/quota.mjs`, `router/usage.mjs` | allowance calibration, headroom, steering, cooldown benches, usage ledger |
+| Quota and usage | `router/quota.mjs`, `router/usage.mjs` | allowance calibration, headroom, steering, usage ledger — rows carry `trigger` (operator / `app:<name>`) and `costUsd` from declared prices |
+| Failure classification | `router/failclass.mjs` | quota-before-ratelimit ordering, key faults remembered per base-url + fingerprint (quota bodies are never a key fault), model gaps walk without benching |
+| Durable writes | `router/atomic.mjs` (+ twins in `lib/`, `lib/workflow/`) | temp sibling + fsync + rename, mode on the temp inode — the ledger, the memory store, the `.env`, and roster writes never land half-written or world-readable |
 | Suggester | `router/suggest.mjs` | model ranking: measured latency/errors, declared context, quota headroom, `strength` |
 | Mixture of agents | `router/swarm.mjs` | parallel proposers, best answer judged by TypeSafe |
 | Dashboard | `router/dashboard.html` | usage, app grants, delegation editor; saves through the same kit CLI |
@@ -48,7 +50,7 @@ Two token classes behind one gate is the whole security model. Everything else i
 | Guided setup | `router/setup.html` + `/api/setup` · `/api/keys` | the readiness checklist the router computes, write-only browser key entry, connect-an-agent |
 | Desktop shell | `app/main.mjs` (Electron) | preflight (kit found, deps, quickstart), attaches to a healthy service or owns the router as a child, opens `/chat` |
 | Service | `lib/service.mjs` | launchd (macOS) / systemd (Linux) user unit with keepalive |
-| Workflow plane | `lib/workflow/` (14 modules, resolved as a `file:` package) | the harnessed agent control plane: run state, judging and gates, tool grants and the world, transport, event journal and graph |
+| Workflow plane | `lib/workflow/` (16 modules, resolved as a `file:` package) | the harnessed agent control plane: run state, judging and gates, tool grants and the world, transport, event journal and graph, the memory store and its atomic writer |
 
 ## Data flow for the common request
 
@@ -58,8 +60,8 @@ ZCode (or any OpenAI-compatible client) sends `POST /v1/chat/completions` with `
 2. **Judgment cache**: hash of system-prompt head + latest instruction; a hit reuses the verdict.
 3. **Judge** (one verdict per task, fail-open): workload tier, execution (`single`/`mixture`), first workflow, optional follow-up. Backends: `typesafe` (default), `fastino` (GLiNER2.5 encoder over sys1), `cascade` (fastino first, TypeSafe escalates).
 4. **Execution**: a single call; or parallel proposers plus an integration judgment (mixture); or delegate to a workflow in the library.
-5. **Tier chain walk**: quota-aware candidate order; upstream `402/403/408/429/5xx` or a connection failure moves to the next candidate and opens a cooldown bench.
-6. **Metering**: every attempt (won, diverted, lost) lands in the usage ledger; verdict headers ride the response.
+5. **Tier chain walk**: quota-aware candidate order; parity first — a fallback declaring that it lacks a capability the request carries (images, tools) is excluded before steering, with undeclared caps neutral. Upstream `402/403/408/429/5xx` or a connection failure is classified (`router/failclass.mjs`: usage-limit vocabulary before the 429 pattern; quota/billing never a key fault; model gaps walk without benching), moves to the next candidate, and opens a bench per its class; the roster's cooldown overrides win first. A benched provider steers as zero headroom.
+6. **Metering**: every attempt (won, diverted, lost, parity-excluded) lands in the usage ledger with its failure class and trigger; verdict headers ride the response.
 
 ## Data flow for a workflow run
 
