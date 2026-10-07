@@ -73,8 +73,9 @@ below are light-theme renders; the interactive versions carry the file and line 
 - **The run API.** `POST /v1/runs` starts a run for an app token, `POST /v1/runs/<id>/answers` answers its escalations
   live, `GET /v1/runs/<id>/artifacts` reads what it produced. Ownership is re-derived from the journal, so a restart
   never reopens the door.
-- **A loop library.** Seven loop shapes over the plane — deep-research, remediate, triage, refine-loop, red-team,
-  watchdog, router-eval — plus the one-pass workflows they were built from. Six tabular loops ride the dev-decisions
+- **A loop library.** Fifteen loops over the plane, in three lanes, plus the one-pass workflows they were built
+  from. Seven loop shapes anchor the library — deep-research, remediate, triage, refine-loop, red-team, watchdog,
+  router-eval. Six tabular loops ride the dev-decisions
   lane: quota-forecast (per-plan exhaustion bands, an in-band crossing escalates), flake-watch (known-flaky suites
   named, quarantine don't chase), calibrate-floors (proposed per-head confidence floors beside the static ones —
   proposes, never writes), risk-composed review (findings annotated with directory revert risk; the swarm's gate
@@ -87,11 +88,9 @@ below are light-theme renders; the interactive versions carry the file and line 
   the calibration store: divergent grades escalate, agreeing pairs become
   merge proposals — report-only) and render-watch (a wave's PNGs embedded,
   unchanged re-renders counted as would-skip against the visual-judge — in
-  shadow, nothing is skipped), plus a review-sweep dedup head (repeats carry
-  their prior disposition, annotated never dropped), router-eval neighbor
-  annotations (EVAL-ONLY grading context), and the shadow router (what the
-  geometry would have picked, logged beside the judge's actual pick, applied
-  nowhere). Embeddings propose, sys1/sdm1 dispose. See
+  shadow, nothing is skipped) — with the review-sweep dedup head, the
+  router-eval neighbor annotations, and the shadow router as consumers of the
+  lane rather than loops. Embeddings propose, sys1/sdm1 dispose. See
   [`docs/features/semantic-lane.md`](docs/features/semantic-lane.md).
 - **Dashboard.** The router serves its own dashboard at `/dashboard` — the usage ledger, provider enable/disable,
   quota status, the delegation and workflow assignment view, live run activity, and a Save & apply button that writes
