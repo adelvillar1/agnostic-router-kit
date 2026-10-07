@@ -134,6 +134,41 @@ const md = [
 ].join("\n");
 await artifact.markdown("deliverable", md, { title: "Triage routing", primary: true });
 
+// ── the eval-only routing head (tabular lane) ──────────────────────────────
+// tabular-loops: eval-only, no label writes. When this run holds the `tabular`
+// grant, the sdm1 many-class router ALSO scores real issue routing through
+// dev-decisions' triage-issues (--sdm1-route is eval-only by its own contract;
+// --dry-run is passed explicitly so the argv itself shows no label write was
+// asked for). Each prediction is journaled here under the eval tag with
+// `applied: false` and touched nowhere else — not this run's verdicts above,
+// not the tracker. Predictions accrue in the calibration store until the floor
+// is met; deciding with them is a later wave. Grant absent → this block never
+// runs and everything above is byte-identical to the triage that always was.
+if (world.grants().has("tabular")) {
+  try {
+    const evalHead = await world.tabular("triage-issues", { "dry-run": true, "sdm1-route": true, limit: 25 });
+    if (evalHead?.ok) {
+      for (const row of evalHead.rows.slice(0, 50)) {
+        // tabular-loops: eval-only, no label writes — the journal line is the whole effect.
+        log(
+          `triage-eval ${JSON.stringify({
+            eval: "triage-routing",
+            applied: false,
+            issue: row.issue ?? row.number ?? row.id ?? null,
+            predicted: row.route ?? row.component ?? row.predicted ?? null,
+            confidence: row.confidence ?? null,
+          })}`
+        );
+      }
+      log(`triage-eval: ${evalHead.rows.length} sdm1 routing prediction(s) journaled, none applied`);
+    } else {
+      log(`triage-eval unavailable: ${String(evalHead?.reason ?? "no tabular surface").slice(0, 160)}`);
+    }
+  } catch (e) {
+    log(`triage-eval unavailable: ${String(e?.message ?? e).slice(0, 160)}`);
+  }
+}
+
 return {
   conclusion: `${items.length} item(s) triaged: ${verdicts.filter((v) => !v.ambiguous).length} classified, ${verdicts.filter((v) => v.ambiguous).length} escalated.`,
   verdicts: sorted,

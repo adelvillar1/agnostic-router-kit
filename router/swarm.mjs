@@ -341,9 +341,11 @@ export function createSwarm(deps) {
    * Run the part/deliverable gate through the dev-decisions CLI. Returns
    * { verdict: "supported"|"not-supported", detail, ok: boolean }. `ok:false`
    * means the gate could not run (binary missing, CLI error) — the caller
-   * applies its deterministic fallback and records that fact.
+   * applies its deterministic fallback and records that fact. `planNote`
+   * prepends a non-checkbox line to the plan markdown, so a composed pass can
+   * say why it ran without disturbing the checkbox order that defines C<i>.
    */
-  function runGate(criteria, evidence, { label, requested }) {
+  function runGate(criteria, evidence, { label, requested, planNote = null }) {
     return new Promise((resolve) => {
       if (!criteria.length) {
         resolve({ ok: false, verdict: "not-supported", detail: "no criteria" });
@@ -353,7 +355,7 @@ export function createSwarm(deps) {
       const planPath = path.join(dir, `plan-${label}.md`);
       const evidencePath = path.join(dir, `evidence-${label}.md`);
       try {
-        fs.writeFileSync(planPath, criteria.map((c, i) => `- [ ] ${c}`).join("\n") + "\n");
+        fs.writeFileSync(planPath, (planNote ? `${planNote}\n` : "") + criteria.map((c, i) => `- [ ] ${c}`).join("\n") + "\n");
         fs.writeFileSync(evidencePath, criteria.map((c, i) => `== C${i} ==\n${evidence[i] ?? "(no evidence produced)"}`).join("\n\n") + "\n");
       } catch (e) {
         resolve({ ok: false, verdict: "not-supported", detail: `gate files unwritable: ${String(e?.message ?? e)}` });
@@ -382,6 +384,71 @@ export function createSwarm(deps) {
     });
   }
 
+  // ── the cached risk prior (the tabular lane's read side) ───────────────────
+  // dev-decisions' own `risk-prior` verb scores per-directory revert risk from
+  // git history into a cached CSV under its store dir. The gate reads that
+  // FILE — zero network, zero CLI spawn in the gate path; the batch-only law
+  // forbids a TabPFN call inside a synchronous path, and the gate is as
+  // synchronous as the router gets. The header is read, not assumed (current
+  // writer says `dir,…,revert_prior,…`; the parser accepts the
+  // `directory,risk,sampleCount` spelling too). Table absent or unreadable →
+  // an empty prior, which is exactly today's behavior.
+  let riskRows = null;
+  function riskPrior() {
+    if (riskRows) return riskRows;
+    riskRows = [];
+    try {
+      const csv = fs.readFileSync(
+        path.join(os.homedir(), ".local", "share", "dev-decisions", "tables", "risk_prior.csv"),
+        "utf8"
+      );
+      const lines = csv.split("\n").map((l) => l.trim()).filter(Boolean);
+      const head = (lines[0] ?? "").split(",").map((h) => h.trim());
+      const dirAt = head.findIndex((h) => h === "dir" || h === "directory");
+      const riskAt = head.findIndex((h) => h === "revert_prior" || h === "risk");
+      if (dirAt !== -1 && riskAt !== -1) {
+        for (const line of lines.slice(1)) {
+          const cells = line.split(",");
+          const directory = cells[dirAt] ? cells[dirAt].replace(/^\.\/?/, "") : "";
+          const risk = Number(cells[riskAt]);
+          // A row needs a real directory and a real score: the writer's own
+          // root row (`.`) carries an empty prior and scores the repo, not a
+          // directory — it must never elevate a part.
+          if (!directory || !cells[riskAt] || !Number.isFinite(risk)) continue;
+          riskRows.push({ directory, risk });
+        }
+      }
+    } catch {
+      /* absent table = no prior = today's behavior */
+    }
+    return riskRows;
+  }
+
+  /** Directories whose risk sits in the top decile of the table — the ones
+   * that earn a part a second gate. Empty table → empty set. */
+  function topDecileDirs() {
+    const rows = riskPrior().slice().sort((a, b) => b.risk - a.risk);
+    if (!rows.length) return new Set();
+    return new Set(rows.slice(0, Math.max(1, Math.ceil(rows.length * 0.1))).map((r) => r.directory));
+  }
+
+  /** Path-like tokens in free text — the decomposer names files and directories
+   * in a part's title and instruction, and that text is what the gate sees. */
+  function touchedPaths(text) {
+    return [...String(text).matchAll(/[\w.@-]+(?:\/[\w.@-]+)+/g)].map((m) => m[0]);
+  }
+
+  /** A touched path hits a risky directory when the directory is a
+   * path-boundary prefix of it (`lib` matches `lib/workflow/x.mjs`, never
+   * `liberal/x.mjs`). */
+  const pathTouches = (p, dir) => p === dir || p.startsWith(`${dir}/`) || p.includes(`/${dir}/`);
+
+  /** Whether any of a part's named paths lands in a top-decile-risk directory. */
+  function touchesTopRisk(paths, risky) {
+    for (const p of paths) for (const dir of risky) if (pathTouches(p, dir)) return true;
+    return false;
+  }
+
   /**
    * Per-part accept/revise. Gate first, revise once, then accept or drop.
    * A missing gate is not a hang and not a blank check: the part is accepted
@@ -406,6 +473,7 @@ export function createSwarm(deps) {
   async function gateParts(signals, parts, built, requested, think) {
     const accepted = [];
     const report = [];
+    const risky = topDecileDirs();
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];
       let text = built[i]?.text ?? null;
@@ -414,6 +482,12 @@ export function createSwarm(deps) {
         continue;
       }
       const criterion = partCriterion(part);
+      // Risk composition: a part whose title or instruction names a path inside
+      // a top-decile-risk directory is gated twice before it is accepted (the
+      // elevated pass below). Reading the prior was a cached file parse — no
+      // network, no child process here either.
+      const elevated = touchesTopRisk(touchedPaths(`${part.title} ${part.instruction}`), risky);
+      if (elevated) log({ event: "swarm-risk", part: part.id, requested, outcome: "elevated" });
       let gate = await runGate([criterion], [text], { label: `part-${part.id}`, requested });
       if (!gate.ok) {
         report.push({ id: part.id, state: "accepted", note: `gate unavailable: ${gate.detail}` });
@@ -441,7 +515,32 @@ export function createSwarm(deps) {
         if (!gate.ok) break;
       }
       if (gate.verdict === "supported") {
-        report.push({ id: part.id, state: "accepted", ...(revise ? { revise } : {}) });
+        if (elevated) {
+          // The elevated pass: evidence-gate takes no --elevated flag (its
+          // --help offers only --provider), so elevation is expressed as a
+          // SECOND, independent invocation of the same gate whose plan records
+          // the risk note — and both passes must support. A second classifier
+          // read of the same evidence is the honest v1 of "more scrutiny" for
+          // top-decile-risk directories; a flag would have to mean the same
+          // thing with nothing behind it.
+          const eGate = await runGate([criterion], [text], {
+            label: `part-${part.id}-elevated`,
+            requested,
+            planNote: "> elevated pass — this part touches a top-decile revert-risk directory (risk-prior table); both gate passes must support.",
+          });
+          if (!eGate.ok) {
+            // Same fail-open law as the primary gate: an unavailable elevated
+            // gate is recorded, not a reason to drop good work.
+            report.push({ id: part.id, state: "accepted", elevated: true, note: `elevated gate unavailable: ${eGate.detail}` });
+            accepted.push({ ...part, text, providerId: built[i].providerId, model: built[i].model });
+            continue;
+          }
+          if (eGate.verdict !== "supported") {
+            report.push({ id: part.id, state: "dropped", elevated: true, reason: `elevated gate: ${eGate.detail}` });
+            continue;
+          }
+        }
+        report.push({ id: part.id, state: "accepted", ...(revise ? { revise } : {}), ...(elevated ? { elevated: true } : {}) });
         accepted.push({ ...part, text, providerId: built[i].providerId, model: built[i].model });
       } else if (!gate.ok) {
         report.push({ id: part.id, state: "accepted", note: "gate unavailable after revise" });

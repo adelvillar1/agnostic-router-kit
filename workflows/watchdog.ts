@@ -2,7 +2,11 @@
 description: "Watches a thing between runs: reads the watched URLs and paths,
   diffs the state the spawner handed in, and judges whether what matters
   changed. The new state comes back in the result for the caller to carry into
-  the next spawn — state lives with the caller, so nothing outlives the run."
+  the next spawn — state lives with the caller, so nothing outlives the run.
+  Every run also carries a batch fleet-watch section: dev-decisions'
+  fleet-anomaly scores the machine's repos against fleet peers and flagged
+  repos escalate; CLI or table absent, the section reports its absence and the
+  run proceeds."
 whenToUse: On a schedule, through the run API or a cron: docs drift, dependency
   bumps, upstream changelogs, price or availability pages.
 args:
@@ -66,6 +70,43 @@ function hash(s) {
   return (h >>> 0).toString(36);
 }
 
+// ── fleet-watch (tabular lane) ───────────────────────────────────────────────
+// A batch section that rides every watchdog run, before the diff: dev-decisions'
+// fleet-anomaly scores the repos this machine actually runs against their fleet
+// peers and flags deviations. This runs between rounds, never inside an ask
+// (the batch-only law). Absent CLI, absent sdm1, empty table → the section
+// reports its absence and the watchdog proceeds exactly as before; nothing else
+// in the run depends on it. Flagged repos are escalated through the run's
+// existing ladder (one escalation, every repo named), not silently swallowed.
+let fleet: { available: boolean; flagged: { repo: string; detail: string }[]; note: string } | null = null;
+try {
+  const scored = await world.tabular("fleet-anomaly", { "all-query": true });
+  if (scored?.ok) {
+    const flagged = scored.rows
+      .filter((row) => row.flag === true || row.anomaly === true || /anomal|flag/i.test(String(row.verdict ?? "")))
+      .map((row) => ({
+        repo: String(row.repo ?? row.directory ?? "?").slice(0, 120),
+        detail: String(row.why ?? row.reason ?? row.detail ?? "flagged by fleet-anomaly").slice(0, 200),
+      }));
+    fleet = { available: true, flagged, note: `${scored.rows.length} repo(s) scored against fleet peers` };
+    log(`fleet: ${fleet.note}`);
+    if (flagged.length) {
+      for (const f of flagged) log(`fleet anomaly: ${f.repo} — ${f.detail}`);
+      await escalate(
+        `Fleet anomaly: ${flagged.length} repo(s) deviate from fleet peers — ${flagged.map((f) => f.repo).join(", ")}`,
+        flagged.map((f) => `${f.repo}: ${f.detail}`).join("\n"),
+        "fleet-anomaly",
+      );
+    }
+  } else {
+    fleet = { available: false, flagged: [], note: String(scored?.reason ?? "no tabular surface").slice(0, 160) };
+    log(`fleet section unavailable: ${fleet.note} — watchdog proceeds`);
+  }
+} catch (e) {
+  fleet = { available: false, flagged: [], note: String(e?.message ?? e).slice(0, 160) };
+  log(`fleet section unavailable: ${fleet.note} — watchdog proceeds`);
+}
+
 phase("Read the watched things");
 const current: Record<string, { hash: string; bytes: number; error?: string }> = {};
 const contents: Record<string, string> = {};
@@ -113,6 +154,7 @@ if (!hadBaseline) {
     why: "baseline established — no prior state to diff against",
     changes: [],
     state: { snapshots: Object.fromEntries(Object.entries(current).map(([k, v]) => [k, v.hash])) },
+    ...(fleet ? { fleet } : {}),
     verified: ["the baseline state returned is the state the next run diffs against"],
     notCovered: [],
   };
@@ -130,6 +172,7 @@ if (meaningful.length === 0) {
     why: "every watched hash matches the prior state",
     changes: realChanges,
     state: { snapshots: Object.fromEntries(Object.entries(current).map(([k, v]) => [k, v.hash])) },
+    ...(fleet ? { fleet } : {}),
     verified: ["a no-change run spent no model call"],
     notCovered: [],
   };
@@ -175,6 +218,7 @@ const md = [
   "",
   `Watched: ${Object.keys(current).length} key(s). Changes: ${changes.length}. Matters: ${judgment.matters ? "YES" : "no"}.`,
   `Why: ${judgment.why}`,
+  ...(fleet ? ["", `Fleet: ${fleet.note}${fleet.flagged.length ? ` — flagged: ${fleet.flagged.map((f) => f.repo).join(", ")}` : ""}`] : []),
   "",
   ...changes.map((c) => `- **${c.kind}** ${c.key}${current[c.key]?.error ? ` — error: ${current[c.key].error}` : ""}`),
 ].join("\n");
@@ -187,6 +231,7 @@ return {
   why: judgment.why,
   changes,
   state: { snapshots: Object.fromEntries(Object.entries(current).map(([k, v]) => [k, v.hash])) },
+  ...(fleet ? { fleet } : {}),
   verified: [
     "the diff was computed from content hashes, deterministically",
     "the model was consulted only because something changed",

@@ -54,6 +54,9 @@ interface Finding {
   status: "verified" | "unconfirmed";
   /** How much it matters. */
   severity: "low" | "medium" | "high";
+  /** Per-directory revert risk from the cached risk-prior table, when the
+   * tabular lane scored the repo; absent when it did not (fail-open). */
+  risk?: number;
 }
 
 const task = String(args.task ?? "").trim() || "Review the changed files.";
@@ -117,13 +120,64 @@ const findings = perFile.flat().sort((a, b) => {
 });
 log(`${findings.length} findings after confirmation`);
 
+// ── the risk prior (batch, between rounds — the batch-only law) ────────────
+// sdm1 reads what the work measures: dev-decisions' risk-prior scores
+// per-directory revert risk from git history into its cached table, and the
+// sweep annotates each finding with the risk of the directory it landed in.
+// This runs between agent rounds, never inside an ask. Fail-open: the tabular
+// lane not ok (CLI absent, sdm1 unconfigured, empty table) means findings pass
+// through unannotated and the refusal is logged — the review is not gated on
+// the prior.
+let riskRows: { directory: string; risk: number }[] = [];
+try {
+  const root = await world.run("git", ["rev-parse", "--show-toplevel"]);
+  const repo = String(root?.stdout ?? "").trim().split("\n")[0];
+  const r = await world.tabular("risk-prior", repo ? { repo } : {});
+  if (r?.ok) {
+    riskRows = r.rows
+      .map((row) => ({ directory: String(row.directory ?? row.dir ?? "").replace(/^\.\/?/, ""), risk: Number(row.risk ?? row.revert_prior) }))
+      .filter((row) => row.directory && Number.isFinite(row.risk));
+    log(`risk prior: ${riskRows.length} director(y/ies) scored`);
+  } else {
+    log(`risk prior unavailable: ${String(r?.reason ?? "no tabular surface").slice(0, 160)} — findings pass through unannotated`);
+  }
+} catch (e) {
+  log(`risk prior unavailable: ${String(e?.message ?? e).slice(0, 160)} — findings pass through unannotated`);
+}
+// A finding's directory risk is the risk of the tightest table row that is a
+// path-boundary prefix of the finding's path (`lib` matches `lib/x.mjs`, never
+// `liberal/x.mjs`); no matching row leaves the finding unannotated.
+const riskFor = (p: string): number | null => {
+  let best: number | null = null;
+  for (const r of riskRows) {
+    const hit = p === r.directory || p.startsWith(`${r.directory}/`) || p.includes(`/${r.directory}/`);
+    if (hit && (best === null || r.risk > best)) best = r.risk;
+  }
+  return best;
+};
+for (const f of findings) {
+  const risk = riskFor(f.where);
+  if (risk !== null) f.risk = risk;
+}
+const scored = findings.filter((f) => f.risk !== undefined);
+const riskiest = scored.slice().sort((a, b) => (b.risk ?? 0) - (a.risk ?? 0))[0];
+
 const md = [
   `# Review: ${task}`,
   "",
   `Changed files reviewed: ${changed.length}. Findings: ${findings.length} ` +
     `(${findings.filter((f) => f.status === "verified").length} reproduced independently).`,
+  scored.length
+    ? `Risk prior: ${scored.length} of ${findings.length} finding(s) carry a directory risk` +
+      (riskiest ? `; riskiest: \`${riskiest.where}\` at ${riskiest.risk}` : "") +
+      "."
+    : "Risk prior: unavailable or no scored row for the changed paths — findings unannotated.",
   "",
-  ...findings.map((f) => `- **${f.severity}** \`${f.where}\` — ${f.what}\n  - evidence: ${f.evidence}\n  - ${f.status}`),
+  ...findings.map(
+    (f) =>
+      `- **${f.severity}** \`${f.where}\` — ${f.what}\n  - evidence: ${f.evidence}\n  - ${f.status}` +
+      (f.risk !== undefined ? `\n  - directory risk: ${f.risk}` : "")
+  ),
 ].join("\n");
 await artifact.markdown("deliverable", md, { title: "Review report", primary: true });
 

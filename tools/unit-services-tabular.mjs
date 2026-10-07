@@ -133,7 +133,7 @@ await check("tabular: an off-list command is refused, naming what ships", async 
   assert.equal(r.ok, false);
   assert.equal(
     r.reason,
-    "unknown tabular command: not-a-verb (shipped: override-prior, record-runs, history-gate, record-bench, budget-gate, risk-prior, fleet-anomaly)"
+    "unknown tabular command: not-a-verb (shipped: override-prior, record-runs, history-gate, record-bench, budget-gate, risk-prior, fleet-anomaly, triage-issues)"
   );
 });
 await check("tabular: a non-object args is refused before any process runs", async () => {
