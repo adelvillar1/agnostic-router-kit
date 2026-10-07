@@ -12,7 +12,7 @@
       "url": "git@github.com:adelvillar1/agnostic-router-kit.git",
       "provider": "github",
       "link_mode": "local-only",
-      "revision": "7b43a404b5b8c425088ff1ca3cb1ffccde27a9fb"
+      "revision": "3d700bcf16cf59e44fff2c7fe871560f5f3d49b7"
     }
   },
   "lanes": [
@@ -273,6 +273,23 @@
           "label": "summary + run-done"
         }
       ]
+    },
+    {
+      "id": "memory",
+      "lane": "plane",
+      "col": 5,
+      "type": "database",
+      "label": "Memory plane",
+      "sublabel": "durable, cross-run",
+      "width": 160,
+      "sources": [
+        {
+          "path": "lib/workflow/memory.mjs",
+          "line": 1,
+          "end_line": 40,
+          "label": "the durable graph store"
+        }
+      ]
     }
   ],
   "edges": [
@@ -353,6 +370,14 @@
       "to": "settle",
       "label": "return value",
       "role": "main"
+    },
+    {
+      "id": "loop-memory",
+      "from": "loop",
+      "to": "memory",
+      "label": "remember · recall",
+      "role": "async",
+      "variant": "dashed"
     }
   ],
   "semanticChecks": {
@@ -362,7 +387,8 @@
     "allowedTerminals": [
       "denied",
       "journal",
-      "settle"
+      "settle",
+      "memory"
     ],
     "requiredEdges": [
       {
@@ -403,7 +429,8 @@
         "run.jsonl carries the phases, agent and tool calls, each escalation and its answer.",
         "summary.json closes the run and releases the spawn slot.",
         "Nothing in the plane is reconstructed after the fact.",
-        "lib/workflow/engine.mjs:139 and 662"
+        "lib/workflow/engine.mjs:139 and 662 · lib/workflow/memory.mjs",
+        "The memory plane is the tier above run.jsonl: durable across runs and agents (the memory capability)."
       ]
     },
     {

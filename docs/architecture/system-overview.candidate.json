@@ -12,7 +12,7 @@
       "url": "git@github.com:adelvillar1/agnostic-router-kit.git",
       "provider": "github",
       "link_mode": "local-only",
-      "revision": "7b43a404b5b8c425088ff1ca3cb1ffccde27a9fb"
+      "revision": "3d700bcf16cf59e44fff2c7fe871560f5f3d49b7"
     },
     "views": [
       {
@@ -294,7 +294,7 @@
       "id": "plane",
       "type": "backend",
       "label": "Workflow plane",
-      "sublabel": "runWorkflow · phases · journal",
+      "sublabel": "runWorkflow · facts · journal",
       "sources": [
         {
           "path": "lib/workflow/engine.mjs",
@@ -500,6 +500,33 @@
         196,
         64
       ]
+    },
+    {
+      "id": "memplane",
+      "type": "database",
+      "label": "Memory plane",
+      "sublabel": "memory.jsonl · entities · relations",
+      "sources": [
+        {
+          "path": "lib/workflow/memory.mjs",
+          "line": 1,
+          "end_line": 40,
+          "label": "the durable graph store"
+        },
+        {
+          "path": "router/server.js",
+          "line": 2234,
+          "label": "/api/memory · /v1/memory"
+        }
+      ],
+      "pos": [
+        1240,
+        470
+      ],
+      "size": [
+        200,
+        72
+      ]
     }
   ],
   "boundaries": [
@@ -521,7 +548,8 @@
         "plane",
         "agents",
         "tools",
-        "runsDir"
+        "runsDir",
+        "memplane"
       ],
       "pad": 18
     },
@@ -625,19 +653,7 @@
       "id": "agents-artifacts",
       "from": "agents",
       "to": "runsDir",
-      "label": "artifacts",
-      "fromSide": "bottom",
-      "toSide": "right",
-      "via": [
-        [
-          1338,
-          506
-        ],
-        [
-          1180,
-          506
-        ]
-      ]
+      "label": "artifacts"
     },
     {
       "id": "tools-firecrawl",
@@ -694,6 +710,13 @@
       "from": "desktop",
       "to": "surfaces",
       "label": "opens /chat"
+    },
+    {
+      "id": "plane-mem",
+      "from": "plane",
+      "to": "memplane",
+      "label": "remembers · recalls",
+      "variant": "dashed"
     }
   ],
   "cards": [
@@ -705,7 +728,8 @@
         "Apps: a router.apps row — its own token, grant ceiling, and workspace root.",
         "The /api control plane is operator-only: an app token gets 403 there and acts through /v1.",
         "POST /api/keys is write-only — the response says whether a name resolves, never the value (router/server.js:2202).",
-        "A spawn past the ceiling is a 403 that names the ceiling (router/server.js:1849)."
+        "A spawn past the ceiling is a 403 that names the ceiling (router/server.js:1849).",
+        "The durable memory plane: /v1/memory is capability-gated by the app's ceiling; /api/memory is operator-only (router/server.js:2244)."
       ]
     },
     {
@@ -714,7 +738,8 @@
       "items": [
         "Copies router/ into the runtime dir; the service runs that copy, so git pull never moves it.",
         "Renders config.json from roster.json and writes env-var names into .env (chmod 600).",
-        "The dashboard saves through the same CLI, not a second copy (router/server.js:1073); kit quickstart runs the same steps with prompts."
+        "The dashboard saves through the same CLI, not a second copy (router/server.js:1073); kit quickstart runs the same steps with prompts.",
+        "The memory store is runtime state under the kit home — kit memory stats/search/gc/import and the MCP server read and write it."
       ]
     },
     {
