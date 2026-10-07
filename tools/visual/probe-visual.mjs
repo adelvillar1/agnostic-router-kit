@@ -199,5 +199,5 @@ try {
   // Chromium's children inherit the stdio pipes and outlive the work; an
   // explicit exit is the only reliable end when this runs piped. A thrown
   // failure sets process.exitCode in the catch — honour it here too.
-  process.exit(failures || process.exitCode ? 1 : 0);
+  process.exit(failures.length || process.exitCode ? 1 : 0);
 }

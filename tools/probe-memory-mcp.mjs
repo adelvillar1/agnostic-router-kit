@@ -117,5 +117,5 @@ try {
   } else {
     console.log(`scratch home: ${home}`);
   }
-  process.exit(failures || process.exitCode ? 1 : 0);
+  process.exit(failures.length || process.exitCode ? 1 : 0);
 }
