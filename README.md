@@ -74,8 +74,14 @@ below are light-theme renders; the interactive versions carry the file and line 
   live, `GET /v1/runs/<id>/artifacts` reads what it produced. Ownership is re-derived from the journal, so a restart
   never reopens the door.
 - **A loop library.** Seven loop shapes over the plane — deep-research, remediate, triage, refine-loop, red-team,
-  watchdog, router-eval — plus the one-pass workflows they were built from. Flat judgments ride the sys1 judge layer;
-  the LLM agents do generation only.
+  watchdog, router-eval — plus the one-pass workflows they were built from. Six tabular loops ride the dev-decisions
+  lane: quota-forecast (per-plan exhaustion bands, an in-band crossing escalates), flake-watch (known-flaky suites
+  named, quarantine don't chase), calibrate-floors (proposed per-head confidence floors beside the static ones —
+  proposes, never writes), risk-composed review (findings annotated with directory revert risk; the swarm's gate
+  double-gates parts that touch a top-decile-risk directory), triage eval (sdm1 routing predictions journaled
+  eval-only, never applied), and fleet-watch (watchdog runs flag repos deviating from fleet peers). Flat judgments
+  ride the sys1 judge layer; the LLM agents do generation only. See
+  [`docs/features/tabular-decisions.md`](docs/features/tabular-decisions.md).
 - **Dashboard.** The router serves its own dashboard at `/dashboard` — the usage ledger, provider enable/disable,
   quota status, the delegation and workflow assignment view, live run activity, and a Save & apply button that writes
   the roster and re-renders it in place.
@@ -248,9 +254,9 @@ of globals: `args, agent, log, phase, report, escalate, artifact, files, git, wo
 
 - **Grants, not ambient power.** Every capability a run uses is declared at spawn and journalled against the call that
   used it. Default-on: workspace io, the process allowlist, the test runner. Opt-in: package installs, net fetch, net
-  search, sub-agents, and local browsing via moli (the `browser` grant, default-off) with keyless-first search — see
-  [`docs/features/browsing.md`](docs/features/browsing.md). A missing grant refuses by name —
-  `capability not granted in this run: net-search` — and the run continues without it.
+  search, sub-agents, local browsing via moli (the `browser` grant, default-off) with keyless-first search — see
+  [`docs/features/browsing.md`](docs/features/browsing.md) — and the tabular lane (`tabular`, default-off). A missing
+  grant refuses by name — `capability not granted in this run: net-search` — and the run continues without it.
 - **The journal is the record.** `run.jsonl` holds phases, agent and tool calls, escalations and answers, commands with
   their costs, checkpoints, and the closing `run-done` / `run-failed`. `summary.json` is the run's answer.
 - **Escalation has a ranked ladder.** Declared answers, then the live `answers.jsonl`, then a question-substring match,
@@ -262,6 +268,13 @@ of globals: `args, agent, log, phase, report, escalate, artifact, files, git, wo
   unconfirmed, keep or drop, class and confidence — with dev-decisions rows landing in the shared calibration store.
   The LLM agents do generation only. See [`docs/features/loop-library.md`](docs/features/loop-library.md) and the
   interactive [deep-research loop](docs/architecture/deep-research-loop.html).
+- **Tabular verdicts are batch, granted, and fail-open.** `world.tabular(command, args)` execs the dev-decisions CLI's
+  tabular lane — forecast bands, flake scores, revert-risk priors, fleet anomalies, eval-only triage routing — over the
+  tables the kit already produces (quota spend, probe outcomes, git history) in dev-decisions' own store dir. Batch-only
+  by law: loops call it between rounds, never inside an ask, and no TabPFN network call ever runs in a synchronous path
+  — the swarm gate's one tabular read is a cached CSV parse. Absent CLI (`dev-decisions` not installed), absent sdm1 key
+  (`TABPFN_API_KEY`), or an empty table → the loop reports its absence and proceeds exactly as today. See
+  [`docs/features/tabular-decisions.md`](docs/features/tabular-decisions.md).
 
 ## Safety model
 
@@ -337,7 +350,9 @@ Shipped 2026-10-05/06: the run API (`POST /v1/runs`, live escalation answers, ar
 red-team, watchdog, router-eval — with flat judgments riding the sys1 judge layer and search credits budgeted inside
 the workflow. Shipped 2026-10-07: local browsing — rendered pages and scrapes through the operator-installed moli
 browser (the `browser` grant, default-off), keyless-first search, `kit doctor` reporting the stack
-([`docs/features/browsing.md`](docs/features/browsing.md)).
+([`docs/features/browsing.md`](docs/features/browsing.md)) — and the tabular loops: six sdm1-backed loops over
+dev-decisions' batch lane behind the `tabular` grant, default-off, batch-only, fail-open
+([`docs/features/tabular-decisions.md`](docs/features/tabular-decisions.md)).
 
 Next, in the plans' own words: swarm execution on the wire (the run-API plan's wave 3); an AG-UI render of the run event
 stream, whose journal kinds already map onto its typed events; cross-process resume of failed runs and cross-run memory;
