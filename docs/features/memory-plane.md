@@ -35,6 +35,35 @@ The store is byte-format-identical to the official MCP memory server: one `{"typ
 - **The per-run fact store** (harness.mjs) — unchanged: run-scoped by design.
 - **Repo-committed docs** (AGENTS.md, plans, recaps, feature docs) — the cross-harness long term.
 
+## The mnemosyne port (2026-10-07)
+
+The store carries mnemosyne's deterministic machinery as a **format superset** —
+every enriched row still loads in the official MCP server's loader, and unknown
+fields round-trip untouched:
+
+- **Veracity**: `stated | inferred | tool | imported | unknown`, mnemosyne's
+  weight table (1.0 / 0.7 / 0.5 / 0.6 / 0.8), clamped on write.
+- **Facts**: an SPO relation with `confidence` + `mentionCount` + `sources`.
+  A repeated fact compounds `c + (1-c)·w·0.3` (cap 1.0). The same subject+
+  predicate with a different object is a **conflict** — derived at read, never
+  buried; `kit memory resolve <loser> <winner>` supersedes the loser.
+- **Temporal triples**: `addTriple`/`--triple` closes any open S+P when a new
+  value arrives (knowledge that was true until it changed) — mnemosyne's
+  TripleStore law, deliberately separate from the fact law.
+- **Tiers**: `scope` is `global` or `session:<id>`. `kit memory scratch` is the
+  short tier (24h TTL, mnemosyne's default); `kit memory consolidate` is the
+  sleep port — eligible rows (past half-TTL, unconsolidated) promote
+  **additively** into digest entities (originals stay, `consolidatedOf` names
+  them), summaries deterministic-first with one fail-open `model: auto` call
+  when the router is healthy.
+- **Ranked recall**: relevance blended with importance, recency decay
+  (half-week), veracity weight, and a mention boost from regex entity
+  extraction (mnemosyne's annotation patterns) on `--extract` writes.
+
+Not ported, on purpose: embeddings/vector search, passive conversation capture,
+LLM prose extraction, episodic degradation tiers — mnemosyne keeps those; the
+kit's durable tier is explicit-first, and its format stays dependency-free.
+
 ## Known limits, stated
 
 Concurrency is the official server's own model — read-modify-write of the whole file under atomic rename, last writer wins per write; fine for a machine's worth of local agents. Search is substring, not semantic — no embeddings here. The store records what agents and operators declare; it does not extract or consolidate on its own.

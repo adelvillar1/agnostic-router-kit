@@ -141,6 +141,7 @@ Contract and porting rules: `docs/features/workflow-runtime.md`. The generator: 
 
 - The router binds to `127.0.0.1` only; there are no user accounts, sessions, or roles — the machine boundary plus the bearer local token is the whole model.
 - **The `/api/` control plane is operator-class.** The routes that rewrite the roster (and re-run apply), read the ledger, enter keys, and list agents accept the operator token only — an app token gets `403` and acts through `/v1`, scoped by its ceiling, workspace and run ownership. (Before 2026-10-06 the block checked token validity alone; a token with an empty ceiling could rewrite the roster from the browser.)
+- **The durable memory plane carries mnemosyne's deterministic machinery**: veracity labels and weights, SPO facts with compounding confidence, derived conflicts resolved by supersession, temporal triples with auto-invalidation, a scratch tier (session scope + 24h TTL) consolidating additively into digests, and ranked recall (importance + recency + veracity + mention boosts). Enriched rows are a superset of the official MCP graph format — unknown fields round-trip.
 - **The durable memory plane is capability-gated on the app wire.** Apps read and write `~/.agnostic-router-kit/memory/memory.jsonl` through `/v1/memory` only when their `grantCeiling` includes `memory`; the operator surface (`/api/memory`) is operator-class. The MCP server (`bin/agnostic-router-memory.mjs`) serves the same store to harnesses over stdio.
 - **`POST /api/keys` is write-only by contract.** It merges `NAME=value` pairs into the runtime `.env` (line-wise, comments preserved, atomic, mode 600) and responds with `configured` booleans — a written value is never reflected back.
 - The run API adds a second token class: `roster.router.apps` rows (`name`, `token`, `grantCeiling`, optional `workdir`) are rendered into the runtime config beside `localToken`. An app token spawns runs under its ceiling — a grant outside it is refused by name and journaled — inside its own workspace root, and may answer or read artifacts only for runs it spawned. The operator token has no ceiling. Apps are explicit roster rows; there is no dynamic registration.
@@ -200,7 +201,7 @@ The plan-build-recap-document cycle: feature plan in `docs/plans/`, implementati
 
 | Command | What it does |
 |---------|--------------|
-| `kit memory` | the durable memory plane — `stats`, `search <q>`, `config` (the MCP wiring snippet), `gc [--dry-run]`, `import --from mnemosyne\|official --file f` |
+| `kit memory` | the durable memory plane — `stats`, `search <q>`, `remember <text> [--fact \"s p o\"] [--triple …] [--extract]`, `scratch add\|list\|clear`, `facts [--conflicts]`, `consolidate [--dry-run]`, `resolve`, `invalidate`, `config`, `gc`, `import --from mnemosyne\|official --file f` |
 | `kit quickstart` | **the guided install** — asks a few questions (keys entered hidden), runs every step below, ends with a green doctor and the page links. `--yes` for scripted installs, `--force` to re-run over a healthy router, `--skip-install`, `--skip-service` (scratch homes, Windows, the desktop shell) |
 | `kit help` | the commands with their forms |
 | `kit status` | what is installed, where, and whether the service is up |

@@ -80,9 +80,11 @@ below are light-theme renders; the interactive versions carry the file and line 
   quota status, the delegation and workflow assignment view, live run activity, and a Save & apply button that writes
   the roster and re-renders it in place.
 - **A durable memory plane.** One JSONL knowledge graph under the kit home — entities, relations, observations in the
-  official MCP format — served to harnesses by a native zero-dependency MCP server (`kit memory config` prints the
-  wiring), to apps over `/v1/memory` behind the `memory` capability, and to you from the chat (`/remember`, `/recall`)
-  and the terminal (`kit memory`). Imports from mnemosyne or any graph-format store.
+  official MCP format, carrying mnemosyne's deterministic machinery: veracity, compounding SPO facts with conflict
+  detection and supersession, temporal triples, a scratch tier that consolidates into digests, and ranked recall.
+  Served to harnesses by a native zero-dependency MCP server (`kit memory config` prints the wiring), to apps over
+  `/v1/memory` behind the `memory` capability, and to you from the chat (`/remember`, `/recall`) and the terminal
+  (`kit memory`). Imports from mnemosyne or any graph-format store.
 - **A chat and an agent control plane.** `/chat` is a conversation with the router (streamed, verdict shown) beside a
   live view of every connected harness — its runs, its journals, and its open questions, answerable in place.
   `/setup` is the guided half of installation: the router computes what is missing, the browser collects it.

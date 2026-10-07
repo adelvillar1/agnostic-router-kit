@@ -44,7 +44,7 @@ import { slug, freeRunDir, KIT_HOME } from "workflow-plane/runstate.mjs";
 import { parseHeader, validateArgs } from "workflow-plane/meta.mjs";
 import {
   memoryStorePath, loadGraph, saveGraph, searchGraph, memoryStats,
-  createEntities, createRelations, addObservations,
+  createEntities, createRelations, addObservations, addFact, detectConflicts, extractMentions,
 } from "workflow-plane/memory.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1822,6 +1822,11 @@ const server = http.createServer((req, res) => {
               name: String(body.entity).slice(0, 200),
               entityType: caller.operator ? "operator" : `app:${caller.app.name}`,
               observations: [String(body.observation ?? body.text ?? "")].filter(Boolean),
+              ...(body.importance !== undefined ? { importance: body.importance } : {}),
+              ...(body.veracity !== undefined ? { veracity: body.veracity } : {}),
+              ...(body.validUntil !== undefined ? { validUntil: body.validUntil } : {}),
+              ...(body.scope !== undefined ? { scope: body.scope } : {}),
+              ...(body.extract ? { mentions: extractMentions(String(body.entity)) } : {}),
             }]);
             result.added = r.added;
           } else if (Array.isArray(body.entities)) result.added = createEntities(graph, body.entities).added;
@@ -1829,7 +1834,11 @@ const server = http.createServer((req, res) => {
             try { result.observations = addObservations(graph, body.observations).added; }
             catch (e) { return jsonOut(400, { ok: false, error: String(e?.message ?? e) }); }
           } else if (Array.isArray(body.relations)) result.relations = createRelations(graph, body.relations).added;
-          else return jsonOut(400, { ok: false, error: "send entity+observation, entities, relations, or observations" });
+          else if (body.fact) {
+            result.fact = addFact(graph, { ...body.fact, source: caller.operator ? "operator" : `app:${caller.app.name}` });
+            result.conflicts = detectConflicts(graph);
+          }
+          else return jsonOut(400, { ok: false, error: "send entity+observation, entities, relations, observations, or fact" });
           saveGraph(graph, memoryStorePath());
           log({ event: "memory-write", app: caller.operator ? "operator" : caller.app.name, added: result.added?.length ?? 0 });
           return jsonOut(200, { ok: true, ...result });
@@ -2325,6 +2334,10 @@ const server = http.createServer((req, res) => {
             if (Array.isArray(body.observations)) {
               try { result.observations = addObservations(graph, body.observations).added; }
               catch (e) { return jsonOut(400, { ok: false, error: String(e?.message ?? e) }); }
+            }
+            if (body.fact) {
+              result.fact = addFact(graph, { ...body.fact, source: "operator" });
+              result.conflicts = detectConflicts(graph);
             }
             saveGraph(graph, memoryStorePath());
             log({ event: "memory-write", caller: "operator", entities: result.added?.length ?? 0 });
