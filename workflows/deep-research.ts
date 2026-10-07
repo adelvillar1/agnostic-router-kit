@@ -26,17 +26,20 @@ args:
     required: false
   scrapeBudget:
     type: number
-    description: Candidate pages read per round on the operator's self-hosted Firecrawl (default 6) — free, but bounded because each read takes seconds.
+    description: Candidate pages read per round through the plane's scrape router (default 6) — moli first, self-hosted Firecrawl as fallback, plain fetch as the floor — free, but bounded because each read takes seconds.
     required: false
 */
 /**
  * deep-research: the iterative research loop, with the credit discipline the
  * allowance burn taught. Cloud spending happens in exactly one place — the
  * workflow's searches, budgeted, without scrapeOptions — so an agent loop can
- * never spend credits. The actual reading happens on the operator's
- * self-hosted Firecrawl (free): candidate pages are scraped before judging, so
- * the sys1 judge head rules findings on real page content, not search
- * snippets. Stop reasons: coverage, plateau, depth, credit-budget.
+ * never spend credits. The actual reading happens through the plane's scrape
+ * router (free): moli renders first when it can, the operator's self-hosted
+ * Firecrawl is the fallback, and a plain bounded fetch is the floor. Candidate
+ * pages are scraped before judging, so the sys1 judge head rules findings on
+ * real page content, not search snippets — and every source records which leg
+ * (`via`) served it, so the de-Firecrawl drift is measurable per run. Stop
+ * reasons: coverage, plateau, depth, credit-budget.
  */
 
 interface SubQuestions {
@@ -83,6 +86,22 @@ const creditBudget = Math.max(4, Number(args.creditBudget) || 20);
 // Rough per-search cost; the journal's creditsUsed lines are the exact record.
 const SEARCH_COST = 2;
 
+// The shell heuristic: a "successful" read under this floor smells like a JS
+// shell page whose content the renderer could not fill. It is a smell, not a
+// verdict — thin static pages exist — so it only marks the row (`row.thin`).
+// It does NOT trigger a retry: world.scrape already walks the moli-first
+// ladder on every call (engine.mjs passes no format knob, and scrapeUrl tries
+// the browser leg first), so a second call would replay the identical path.
+const THIN_CONTENT_FLOOR = 600;
+
+// The de-Firecrawl tally, rendered: how many sources each scrape leg served,
+// as `moli: 4 · firecrawl: 1 · fetch: 2`. Empty tallies read "none reached".
+const formatVia = (tally) =>
+  Object.entries(tally)
+    .filter(([, n]) => n > 0)
+    .map(([leg, n]) => `${leg}: ${n}`)
+    .join(" · ") || "none reached";
+
 const ESCALATE =
   "If a check is impossible to pass, or your instructions contradict each other, escalate and say so plainly rather than working around it.";
 // The workflow owns the searches: every agent works from what the workflow
@@ -128,6 +147,7 @@ const unconfirmed = []; // judged not-supported or not judgeable — reported, n
 const covered = [];
 const gapsList = [];
 const contradictions = [];
+const viaTally = {}; // sources served per scrape leg across the whole run (moli | firecrawl | fetch)
 let openQuestions = plan.questions;
 let roundsRun = 0;
 let creditsSpent = 0;
@@ -142,6 +162,7 @@ for (let round = 1; round <= depth; round++) {
   // call per sub-question, deduped by query. Agents never touch the network.
   const rowsByQuestion = {};
   const roundRows = [];
+  const roundVia = {}; // this round's sources per scrape leg, for the round log
   for (const q of openQuestions) {
     const metered = world.spentCredits();
     if (metered + SEARCH_COST > creditBudget) {
@@ -158,10 +179,14 @@ for (let round = 1; round <= depth; round++) {
     if (r.ok) roundRows.push(...r.results);
   }
 
-  // The reading step: candidate pages are scraped on the operator's
-  // self-hosted Firecrawl — free, so the loop reads its sources instead of
-  // judging snippets. Deduped across rounds, bounded per round (each read
-  // takes seconds), and content attaches to the row the scout will see.
+  // The reading step: candidate pages go through the plane's scrape router —
+  // moli (rendered, local) first, the operator's self-hosted Firecrawl as
+  // fallback, a plain bounded fetch as the floor — free, so the loop reads its
+  // sources instead of judging snippets. Deduped across rounds, bounded per
+  // round (each read takes seconds), and content attaches to the row the scout
+  // will see. Each read records `via` — the leg that actually served it — plus
+  // `rendered` when moli answered and `thin` under the shell heuristic, so the
+  // journal, the ledger, and the report show how every source was read.
   const scrapeBudgetPerRound = Math.max(0, Number(args.scrapeBudget) || 6);
   const unseen = roundRows.filter((row) => row.url && !seenUrls.has(row.url));
   let scrapedCount = 0;
@@ -170,10 +195,15 @@ for (let round = 1; round <= depth; round++) {
     const scraped = await world.scrape(row.url);
     if (scraped.ok && scraped.content) {
       row.content = scraped.content;
+      row.via = scraped.via;
+      if (scraped.via === "moli") row.rendered = true;
+      if (scraped.content.length < THIN_CONTENT_FLOOR) row.thin = true;
+      roundVia[scraped.via] = (roundVia[scraped.via] ?? 0) + 1;
+      viaTally[scraped.via] = (viaTally[scraped.via] ?? 0) + 1;
       scrapedCount++;
     }
   }
-  log(`round ${round}: scraped ${scrapedCount}/${Math.min(unseen.length, scrapeBudgetPerRound)} candidate pages (self-hosted)`);
+  log(`round ${round}: scraped ${scrapedCount}/${Math.min(unseen.length, scrapeBudgetPerRound)} candidate pages (${formatVia(roundVia)})`);
 
   // Scouts are extractors: they read the result rows — with real page content
   // where the scraper reached — and return candidate findings. No tools.
@@ -262,7 +292,7 @@ for (let round = 1; round <= depth; round++) {
     .join("\n");
   await artifact.markdown(
     "source-ledger",
-    `# Source ledger — ${topic}\n\nRound ${round}, ${seenUrls.size} sources, ${creditsSpent} credits spent.\n\n${ledgerLines}\n`,
+    `# Source ledger — ${topic}\n\nRound ${round}, ${seenUrls.size} sources, ${creditsSpent} credits spent.\n\nSources by read path — ${formatVia(viaTally)}.\n\n${ledgerLines}\n`,
     { title: "Source ledger" },
   );
   report({
@@ -272,6 +302,7 @@ for (let round = 1; round <= depth; round++) {
     supported: pool.length,
     unconfirmed: unconfirmed.length,
     creditsSpent: world.spentCredits(),
+    sourcesByPath: { ...viaTally },
   });
 
   if ((reflection.next ?? []).length === 0) {
@@ -344,15 +375,15 @@ return {
   conclusion: `deep-research: ${pool.length} supported findings from ${seenUrls.size} sources in ${roundsRun} round(s) (stop: ${stopReason}, ${creditsSpent} search credits). Report: ${draft.path}.`,
   stopReason,
   roundsRun,
-  stats: { sources: seenUrls.size, supported: pool.length, unconfirmed: unconfirmed.length, contradictions: contradictions.length, searchCredits: world.spentCredits(), creditBudget },
+  stats: { sources: seenUrls.size, sourcesByPath: { ...viaTally }, supported: pool.length, unconfirmed: unconfirmed.length, contradictions: contradictions.length, searchCredits: world.spentCredits(), creditBudget },
   verified: [
     "every search ran in the workflow, under the run's credit budget — no agent could spend",
     "every finding was ruled by the sys1 judge head (dev-decisions first), with the source recorded",
-    "the source ledger was versioned per round as a workspace artifact",
+    "the source ledger was versioned per round as a workspace artifact, with the read-path tally",
     "the report had an independent read and a fix pass",
   ],
   notCovered: [
-    "candidate pages are read on the operator's self-hosted scraper before judging — findings are ruled on real page content",
+    "candidate pages are read through the plane's scrape router (moli first, self-hosted Firecrawl fallback, plain fetch floor) before judging — findings are ruled on real page content, and each source records the leg that served it",
     "unconfirmed findings are reported but not re-verified a second time",
   ],
 };
