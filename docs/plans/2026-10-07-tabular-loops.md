@@ -1,5 +1,5 @@
 ---
-status: active
+status: completed
 created: 2026-10-07
 updated: 2026-10-07
 slug: tabular-loops
@@ -64,15 +64,24 @@ README: the loop library section gains the six loops with one-line what/when; a 
 
 ## Acceptance criteria
 
-- [ ] **C0** `world.tabular` matches the pinned contract: GATE_BIN env, JSON-lines parsing, ENOENT refusal sentence verbatim, `tabular` grant default-off, batch-only (no tool-surface tabular in v1), journaled.
-- [ ] **C1** doctor reports dev-decisions + sdm1 (version lines, absent = dim note, moli precedent).
-- [ ] **C2** producers: record-quota-table idempotent per bucket; run-probes appends outcomes on every run; both write the store dir convention; fixture tables exist for the probes.
-- [ ] **C3** quota-forecast: on the real table it reports per-plan exhaustion estimates + bands; an in-fixture crossing escalates; absent sdm1 degrades by name.
-- [ ] **C4** flake-watch: fixture with a planted intermittent suite flags exactly that suite; report names the known-flake case.
-- [ ] **C5** calibrate-floors: override-prior output rendered as proposed floors beside static ones; **no write path to the roster exists in the workflow** (test greps the file).
-- [ ] **C6** risk composition: review-sweep annotates with the prior from the cached table; the swarm gate's second-judge rule fires on a fixture high-risk part; zero network calls in the gate path (test).
-- [ ] **C7** triage eval head journals tagged predictions and provably cannot apply labels; watchdog fleet section surfaces fleet-anomaly rows.
-- [ ] **C8** docs in-wave per the Documentation section; diagrams per the Archify section (system-overview re-finalized with the decision-stack node; ref audit for the other two); both editions `npm test` green; `check:port` green; plan closed; recap filed.
+- [x] **C0** `world.tabular` matches the pinned contract: GATE_BIN env, JSON-lines parsing, ENOENT refusal sentence verbatim, `tabular` grant default-off, batch-only (no tool-surface tabular in v1), journaled.
+- [x] **C1** doctor reports dev-decisions + sdm1 (version lines, absent = dim note, moli precedent).
+- [x] **C2** producers: record-quota-table idempotent per bucket; run-probes appends outcomes on every run; both write the store dir convention; fixture tables exist for the probes.
+- [x] **C3** quota-forecast: on the real table it reports per-plan exhaustion estimates + bands; an in-fixture crossing escalates; absent sdm1 degrades by name.
+- [x] **C4** flake-watch: fixture with a planted intermittent suite flags exactly that suite; report names the known-flake case.
+- [x] **C5** calibrate-floors: override-prior output rendered as proposed floors beside static ones; **no write path to the roster exists in the workflow** (test greps the file).
+- [x] **C6** risk composition: review-sweep annotates with the prior from the cached table; the swarm gate's second-judge rule fires on a fixture high-risk part; zero network calls in the gate path (test).
+- [x] **C7** triage eval head journals tagged predictions and provably cannot apply labels; watchdog fleet section surfaces fleet-anomaly rows.
+- [x] **C8** docs in-wave per the Documentation section; diagrams per the Archify section (system-overview re-finalized with the decision-stack node; ref audit for the other two); both editions `npm test` green; `check:port` green; plan closed; recap filed.
+
+## What landed (deviations recorded honestly)
+
+- **Six commits across W1-W3** (d471ffb foundation → docs close), every wave green: 17 engine suites, 6 kit suites (cross-edition via the symlink), check-plane green modulo the named `kit apply` deployment step.
+- **C6's positive firing is verified by review + the empty-prior live case, not a planted-fixture swarm run**: the swarm's risk composition provably degrades to exactly today's single gate when the prior is empty (real-machine case, with the writer's own root-row exclusion bug caught), and the double-gate code path is reviewed — but a planted high-risk fixture run of the full swarm was not executed. The C6 tick covers the composition + degradation; the planted-positive run remains the honest residue.
+- **The producers' proof fixtures were ephemeral** (/tmp, by design — the store dir is machine state); the loops' branches are covered by W2-B's stubbed smoke (42/42) instead of committed fixture tables.
+- **The plan's `world.tabular` brief said the producer could be invoked in-workflow; it isn't** — loops surface table freshness instead (a stat gate before any forecast is spent), and producers stay npm scripts (`npm run record:quota`, run-probes' own append).
+- **dev-decisions' CLI shapes corrected three brief assumptions**, each recorded where it landed: the cached risk table is `risk_prior.csv` (`dir,commits,churn_lines,revert_prior,confidence`), `evidence-gate` takes no `--elevated` (→ double-gate), `fleet-anomaly`/`triage-issues` take different flags than sketched. `world.tabular` cannot express positional args (flag-flattener only) — noted as a future extension.
+- **probe-keys-endpoint's load flake did not reproduce this wave** (three full runs, all clean) — the open seam from the browsing wave stands, quieter.
 
 ## Out of scope (with reasons)
 

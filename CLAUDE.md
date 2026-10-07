@@ -20,6 +20,11 @@ declared-price cost; durable writes atomic; the kit edition carries the port.
 journaled), `browser`/`browser-layout` grants (default-off), `web_render`,
 keyless-first search (`auto`: DuckDuckGo, Firecrawl fallback) — see
 docs/plans/2026-10-07-local-browsing.md and docs/features/browsing.md.
+2026-10-07 tabular wave: `world.tabular` (dev-decisions batch CLI, `tabular`
+grant default-off, batch-only) + six loops — quota-forecast, flake-watch,
+calibrate-floors, risk-composed review, triage eval, fleet-watch — over
+tables the kit already produces — see docs/plans/2026-10-07-tabular-loops.md
+and docs/features/tabular-decisions.md.
 # agnostic-router-kit — house rules
 
 This repo is the harness-agnostic edition: the router and roster are neutral
