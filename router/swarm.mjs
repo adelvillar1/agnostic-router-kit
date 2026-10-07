@@ -789,5 +789,10 @@ export function createSwarm(deps) {
     }));
   }
 
-  return { handle, decompose, workerPool };
+  // gateParts rides the returned object as a testability seam: the risk
+  // composition's positive firing (a planted top-decile row producing a second
+  // gate invocation) is proven by tools/probe-swarm-risk-gate.mjs driving THIS
+  // function with a stubbed CLI — not by a reimplementation in the probe. It
+  // is not a second entry point for production callers; server.js uses handle.
+  return { handle, decompose, workerPool, gateParts };
 }
