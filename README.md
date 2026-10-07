@@ -265,7 +265,8 @@ of globals: `args, agent, log, phase, report, escalate, artifact, files, git, wo
 - **Grants, not ambient power.** Every capability a run uses is declared at spawn and journalled against the call that
   used it. Default-on: workspace io, the process allowlist, the test runner. Opt-in: package installs, net fetch, net
   search, sub-agents, local browsing via moli (the `browser` grant, default-off) with keyless-first search — see
-  [`docs/features/browsing.md`](docs/features/browsing.md) — and the tabular lane (`tabular`, default-off). A missing
+  [`docs/features/browsing.md`](docs/features/browsing.md) — the tabular lane (`tabular`, default-off), and the
+  semantic lane (`semantic`, default-off — see [`docs/features/semantic-lane.md`](docs/features/semantic-lane.md)). A missing
   grant refuses by name — `capability not granted in this run: net-search` — and the run continues without it.
 - **The journal is the record.** `run.jsonl` holds phases, agent and tool calls, escalations and answers, commands with
   their costs, checkpoints, and the closing `run-done` / `run-failed`. `summary.json` is the run's answer.
@@ -285,6 +286,49 @@ of globals: `args, agent, log, phase, report, escalate, artifact, files, git, wo
   — the swarm gate's one tabular read is a cached CSV parse. Absent CLI (`dev-decisions` not installed), absent sdm1 key
   (`TABPFN_API_KEY`), or an empty table → the loop reports its absence and proceeds exactly as today. See
   [`docs/features/tabular-decisions.md`](docs/features/tabular-decisions.md).
+
+### The workflow inventory (39 files, fifteen loops)
+
+**Loops — 13 files carrying fifteen loops.** Seven library shapes, six tabular, two semantic; `review-sweep`,
+`triage`, and `watchdog` each carry two (a loop plus its tabular/semantic head).
+
+| workflow | loops | what it is |
+|---|---|---|
+| `deep-research` | library | Credit-bounded research: the workflow runs the searches, checkers verify angles, a writer integrates. |
+| `remediate` | library | Applies confirmed findings under per-group gates; unverifiable fixes roll back. |
+| `triage` | library + triage-eval head | Classify at volume; low confidence escalates. Carries the eval-only sdm1 routing head. |
+| `refine-loop` | library | Draft, rubric-score, revise to a plateau. |
+| `red-team` | library | Persona challengers attack a deliverable; only attacks a judge keeps get re-attacked. |
+| `watchdog` | library + fleet head | State-hash diff between runs; carries the fleet-anomaly section. |
+| `router-eval` | library | Golden-task calibration feeder, grep-graded; carries the semantic neighbor pre-pass. |
+| `quota-forecast` | tabular | Per-plan spend bands through `budget-gate`; a 72h crossing escalates. |
+| `flake-watch` | tabular | `history-gate` scores the probe-outcomes table; known-flaky suites named, report-only. |
+| `calibrate-floors` | tabular | `override-prior` renders *proposed* confidence floors beside the static ones; never writes. |
+| `review-sweep` | tabular + semantic heads | Confirmed-findings review; carries the risk-prior annotations and the semantic dedup head. |
+| `dupe-watch` | semantic | Near-dupe pairs over the calibration store; divergent grades escalate, nothing writes. |
+| `render-watch` | semantic | Pixel shadow: unchanged re-renders counted as would-skip; the baseline flip is owner-held. |
+
+**One-pass workflows — 9.**
+
+| workflow | what it is |
+|---|---|
+| `adversarial-solve` | Competing champions build independent solutions; a judge merges the best. |
+| `bug-hunt` | Detectives list plausible causes; testers try to prove each one wrong. |
+| `content-production` | Outliner, section writers, and a fact-checker produce document content from a brief. |
+| `coverage-push` | Gap finders and test writers chain per area; the suite decides what lands. |
+| `decision-memo` | Advocates argue each option's strongest honest case; a judge weighs and recommends. |
+| `deep-dive` | Explorers cover subsystems in parallel; a writer integrates and flags risks. |
+| `migration` | Planner splits a migration into gated, independently-built steps. |
+| `postmortem` | Investigators reconstruct the timeline; one analyst turns it into findings. |
+| `research-report` | Scouts cover 4–6 angles, checkers verify, a writer integrates with sources. |
+
+**Harness probes — 17, zero model calls by design.** `budgets-probe`, `checkpoint-probe`, `commands-probe`,
+`competition-probe`, `context-probe`, `delegate-probe`, `edit-probe`, `escalation-probe`, `grants-probe`,
+`http-probe`, `judge-probe`, `memory-probe`, `plane-probe`, `runtime-surface-probe`, `search-probe`,
+`services-probe`, `tokens-probe` — each proves one plane contract (budgets, checkpoints, background commands,
+settlement, context checking, delegation, edits, escalation resolution, grants, the run API, the judge layer, the
+memory plane, harness assembly, the runtime surface, net search, harness services, token accounting). `npm test`
+runs them all; `kit workflows list` is the live enumeration with install state and router-assignability.
 
 ## Safety model
 
