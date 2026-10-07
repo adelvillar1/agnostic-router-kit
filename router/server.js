@@ -1741,18 +1741,6 @@ const server = http.createServer((req, res) => {
         return;
       }
     }
-    if (req.method === "POST" && (req.url === "/route" || req.url === "/v1/route")) {
-      try {
-        return await handleRoute(res, raw);
-      } catch (err) {
-        log({ event: "route-verdict", error: "handler:" + String(err?.stack ?? err).slice(0, 300) });
-        if (!res.writableEnded && !res.destroyed) {
-          res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: { message: "router: /route internal error" } }));
-        }
-        return;
-      }
-    }
     if (req.method === "POST" && (req.url === "/v1/chat/completions" || req.url === "/chat/completions")) {
       let body;
       try {
