@@ -605,7 +605,7 @@ col.addEventListener("click", (e) => {
 /* ── runs, started from the same input box ─────────────────────────────── */
 const runCards = new Map(); // runId -> {card, revs, stat, dot}
 async function startRun(name) {
-  let workflows = Object.keys(state?.resolved?.workflows ?? {});
+  let workflows = (state?.resolved?.workflows ?? []).map((w) => w?.name).filter(Boolean);
   if (!workflows.length) { botErr("No workflows are registered — the judge routes into whatever the roster registered."); return; }
   if (!name || !workflows.includes(name)) {
     botNote(`Which workflow? Available: ${workflows.map((w) => `/${w}`).join("  ")}\nType /run <name> to start one.`);
