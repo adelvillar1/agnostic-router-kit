@@ -287,6 +287,7 @@ lib/                         roster model + resolution, render, .env, service, C
 lib/workflow/                the plane: 14 modules — engine, runstate, checkpoint, tools, services,
                              transport, events, graph, harness, meta, schema, coerce, context, gitworld
 router/                      the proxy: server.js, quota, usage, suggest, swarm, fastino (sys1),
+                             failclass (the failure vocabulary), atomic (durable writes),
                              dashboard.html, setup.html, chat.html
 app/                         the Electron shell: preflight, owns-or-attaches the router, opens /chat
 workflows/                   the loop library + the one-pass workflows (.ts, runnable on the plane)

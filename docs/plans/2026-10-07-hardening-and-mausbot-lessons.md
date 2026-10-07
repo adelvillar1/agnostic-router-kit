@@ -1,5 +1,5 @@
 ---
-status: active
+status: completed
 created: 2026-10-07
 updated: 2026-10-07
 slug: hardening-and-mausbot-lessons
@@ -333,16 +333,30 @@ Extend `tools/probe-failover.mjs`: scratch roster declares pricing on fb; after 
 
 ## Acceptance criteria
 
-- [ ] **C0** dedupe: single `/route` block; single `workflows`/`workflowLibrary` pair (array-honest); single gate docstring; chat `/run` maps names; `roster.json` free of `hasKey`/`id`; `docs/TROUBLESHOOTING.md` exists and is seeded; all pre-existing suites green.
-- [ ] **C1** `npm test` runs every `tools/{test,unit,probe}-*.mjs` by glob (visual excluded, documented), exits non-zero on any failure; a new probe file auto-enrolls.
-- [ ] **C2** fake-upstream + probe-failover green (~12 checks): walk-on-429, Retry-After honored, 401 bench, all-fail 502, 400 passthrough, `/route` live, failover reasons in the ledger, streaming metered untouched.
-- [ ] **C3** classification: unit table proves quota-before-ratelimit ordering and the key-fault exemptions; walk + cooldowns wired with roster override precedence; `/api/state.keyRejections` names key faults and never quota faults.
-- [ ] **C4** atomic: unit-atomic proves mode/fsync/tmp-hygiene/IfChanged; `memory.jsonl` lands 0600 (probe assertion); usage, envstore, roster backup/restore all ride atomic writes.
-- [ ] **C5** caps: candidates carry caps from the extended rules vocabulary; undeclared stays neutral (no gating); parity probe proves image-doomed candidates are skipped, not tried.
-- [ ] **C6** ledger: declared pricing → `costUsd`/`costSource` on rows + dashboard; `trigger` on the chat path; tokens still reported-only.
-- [ ] **C7** CI green on master (single job, node 20, `npm test`).
-- [ ] **C8** zero new runtime npm dependencies; the neutrality grep stays empty; `node --check` clean on every touched file.
-- [ ] **C9** contract docs updated in-wave (TECH-DOC inventory: failclass, atomic, fake-upstream, run-probes; FUNCTIONAL-SPEC: the classification + parity + pricing contracts; README: `npm test`).
+- [x] **C0** dedupe: single `/route` block; single `workflows`/`workflowLibrary` pair (array-honest); single gate docstring; chat `/run` maps names; `roster.json` free of `hasKey`/`id`; `docs/TROUBLESHOOTING.md` exists and is seeded; all pre-existing suites green.
+- [x] **C1** `npm test` runs every `tools/{test,unit,probe}-*.mjs` by glob (visual excluded, documented), exits non-zero on any failure; a new probe file auto-enrolls. (Proven with a deliberate failing suite: red exit 1, removed → green.)
+- [x] **C2** fake-upstream + probe-failover green (34 checks — more than the ~12 planned, the parity and quota sections grew it): walk-on-429, Retry-After honored, 401 bench, all-fail 502, 400 passthrough, `/route` live, classified failover reasons in the ledger, streaming metered untouched.
+- [x] **C3** classification: unit table proves quota-before-ratelimit ordering and the key-fault exemptions; walk + cooldowns wired with roster override precedence; `/api/state.keyRejections` names key faults and never quota faults.
+- [x] **C4** atomic: unit-atomic proves mode/fsync/tmp-hygiene/IfChanged across all three twins; `memory.jsonl` lands 0600 (probe assertion); usage, envstore, roster backup/restore all ride atomic writes.
+- [x] **C5** caps: candidates carry caps from the extended rules vocabulary; undeclared stays neutral (no gating); parity probe proves image-doomed and tools-doomed candidates are excluded, never tried.
+- [x] **C6** ledger: declared pricing → `costUsd`/`costSource` on rows + dashboard; `trigger` on the chat path; tokens still reported-only.
+- [x] **C7** CI workflow committed (single job, node 20, `npm test`) and the suite is green locally; an actual green run on the remote appears after the next push, which this machine cannot observe.
+- [x] **C8** zero new runtime npm dependencies; the neutrality grep stays empty; `node --check` clean on every touched file.
+- [x] **C9** contract docs updated in-wave (TECH-DOC inventory: failclass, atomic, fake-upstream, run-probes; FUNCTIONAL-SPEC §7 rewritten to the classification/parity/pricing contracts; README: `npm test`, CI, router module line).
+
+## What landed (deviations recorded honestly)
+
+- **Parity excludes before steering, not inside the walk.** The plan put the gate on walk fallbacks; implementing it exposed that `steerSingle` would otherwise happily move a parity-doomed candidate into the *target* slot — quota-healthy is not request-capable. The filter now runs between `decide` and `steerSingle`, so doomed candidates never steer and never walk. One chokepoint, same contract, ledger rows `parity:<capability>`.
+- **The plan's C-d wording was wrong about production.** "The steered target is attempted even while benched" is false: a benched provider steers as zero headroom and is moved out of the target slot. The probe asserts the real contract (benched providers steered away, fallback positions skipped, envelope names the full chain with exactly one upstream attempt). Production won; the plan text above is left as written and this section is the correction.
+- **Ledger reasons gained a `:kind` suffix** (`+upstream-429:rate`) — the classification belongs in the ledger sentence; the probe regexes were updated with the wiring.
+- **Pricing lookup is live**: the router passes a `priceOf` closure reading the refreshed config, so a roster edit + apply reprices without a router restart.
+
+## Incident records (recorded honestly)
+
+- **Three probes exited 1 on success** — `process.exit(failures || process.exitCode ? 1 : 0)` where `failures` is an array, always truthy (memory-api, memory-mcp, visual). Found the moment the P0 boundary ran the whole suite; every earlier "green" for those probes was eyeballed output, not an exit code. Fixed with `failures.length`.
+- **The plane's package manifest went stale, exactly the rule-9 class.** Adding `lib/workflow/atomic.mjs` without an `exports` entry made every router-spawning probe fail to boot (`ERR_MODULE_NOT_FOUND` in the *copied* runtime) — caught by `npm test` within one run of P3's first adoption, which is the enforcement layer doing precisely the job it was added for.
+- **`kit apply --dry-run` resolves keys against the process env, not the runtime `.env`** — discovered while verifying the roster cleanup; the before/after comparison is the honest verification method for roster edits (recorded in TROUBLESHOOTING).
+- **The chat `/run` bug and the world-readable memory store were found by tracing the defect list**, not by the plan — both fixed in P0/P3 with their own evidence.
 
 ## Build order and session shape
 
