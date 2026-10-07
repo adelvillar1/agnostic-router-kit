@@ -59,6 +59,39 @@ if (!Array.isArray(golden) || !golden.length || !Array.isArray(candidates) || !c
 }
 const rounds = Math.max(1, Math.min(Number(args.rounds) || 1, 3));
 
+// ── semantic neighbor pre-pass (eval-only, batch — the semantic lane's law) ──
+// Each golden task reports its nearest graded neighbors from the calibration
+// index — their labels and dispositions are grading CONTEXT, printed beside
+// the mechanical verdict. The lane's rule holds: embeddings propose, the
+// grep-grade still disposes. Ungranted run, absent CLI, or no index → the
+// pre-pass is skipped by name and the eval is byte-for-byte what it was.
+const neighborsK = Math.max(0, Number(args.neighborK) ?? 3);
+const neighborNotes: Record<string, string> = {};
+if (neighborsK > 0) {
+  try {
+    for (const task of golden) {
+      const r = await world.semantic("semantic-nn", { corpus: "calibration", text: task.task, k: String(neighborsK) });
+      if (!r?.ok) {
+        log(`semantic neighbors unavailable: ${String(r?.reason ?? "no rows").slice(0, 140)} — pre-pass skipped, eval unchanged`);
+        break;
+      }
+      const hits = r.rows.filter((row) => row && row.key && row.score !== undefined);
+      if (hits.length) {
+        neighborNotes[task.id] = hits
+          .map((h) => {
+            const graded = Array.isArray(h.graded) ? h.graded : [];
+            const labels = graded.map((g) => `${g?.label ?? "?"}@${g?.task ?? "?"}`).join(", ") || "ungraded";
+            return `${Number(h.score).toFixed(3)} ${String(h.op ?? "?")} [${labels}]`;
+          })
+          .join(" · ");
+        report({ task: task.id, neighborContext: neighborNotes[task.id], evalOnly: true, applied: false });
+      }
+    }
+  } catch (e) {
+    log(`semantic neighbors unavailable (${String(e?.message ?? e).slice(0, 140)}) — pre-pass skipped, eval unchanged`);
+  }
+}
+
 phase("Replay the golden tasks per candidate");
 const rows: { candidate: string; taskId: string; attempt: number; verdict: "pass" | "fail"; latencyMs: number }[] = [];
 for (const candidate of candidates) {
@@ -110,6 +143,14 @@ const md = [
   "```jsonl",
   ...rows.map((r) => JSON.stringify({ kind: "router-eval", candidate: r.candidate, taskId: r.taskId, attempt: r.attempt, verdict: r.verdict, latencyMs: r.latencyMs })),
   "```",
+  ...(Object.keys(neighborNotes).length
+    ? [
+        "",
+        `Nearest graded neighbors (EVAL-ONLY context — embeddings propose, the grep-grade disposes; applied: false):`,
+        "",
+        ...Object.entries(neighborNotes).map(([id, note]) => `- **${id}** — ${note}`),
+      ]
+    : []),
 ].join("\n");
 await artifact.markdown("deliverable", md, { title: "Router eval table", primary: true });
 
@@ -117,10 +158,14 @@ return {
   conclusion: `router-eval: ${rows.length} graded attempt(s) across ${candidates.length} candidate(s) — ${table.map((t) => `${t.candidate}: ${(t.accuracy * 100).toFixed(0)}%`).join(", ")}.`,
   table,
   rows,
+  neighborContext: neighborNotes,
   verified: [
     "grading was mechanical — a substring check, never a model verdict",
     "every graded attempt is a calibration-ready row",
     "latency was measured per attempt",
+    ...(Object.keys(neighborNotes).length
+      ? ["neighbor context is EVAL-ONLY annotation — the grades themselves never saw it"]
+      : []),
   ],
   notCovered: [
     "token spend per candidate lives in the run journal's account lines, not in this table",
