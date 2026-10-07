@@ -42,6 +42,10 @@ import { resolveGrants } from "workflow-plane/tools.mjs";
 import { FACT_KINDS } from "workflow-plane/harness.mjs";
 import { slug, freeRunDir, KIT_HOME } from "workflow-plane/runstate.mjs";
 import { parseHeader, validateArgs } from "workflow-plane/meta.mjs";
+import {
+  memoryStorePath, loadGraph, saveGraph, searchGraph, memoryStats,
+  createEntities, createRelations, addObservations,
+} from "workflow-plane/memory.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const expand = (p) => (p.startsWith("~") ? path.join(os.homedir(), p.slice(1)) : p);
@@ -1524,6 +1528,16 @@ function setupState() {
     hint: calls ? null : "open the chat and say hello — that is the whole test",
   });
 
+  // Durable memory is optional state: wired when the store exists and parses.
+  const memGraph = loadGraph(memoryStorePath());
+  steps.push({
+    id: "memory",
+    label: "Durable memory wired",
+    done: memGraph.entities.length > 0,
+    detail: memGraph.entities.length ? `${memGraph.entities.length} memories, ${memGraph.relations.length} relations` : "empty — nothing remembered yet",
+    hint: memGraph.entities.length ? null : "say `remember …` in the chat, or run `kit memory import --from mnemosyne --file export.json`",
+  });
+
   if (judgeMode !== "typesafe") {
     // Checked last and asynchronously: a slow decision service must slow the
     // checklist, not block it.
@@ -1771,6 +1785,60 @@ const server = http.createServer((req, res) => {
       res.writeHead(code, { "Content-Type": "application/json", "Cache-Control": "no-store" });
       res.end(JSON.stringify(obj));
     };
+    // The durable memory plane over the app wire: read/search/write, gated by
+    // the `memory` capability in the caller's ceiling — an app without it is
+    // refused by name, the same blast-radius rule as a spawn grant.
+    if (req.url === "/v1/memory" || req.url.startsWith("/v1/memory?")) {
+      const u = new URL(req.url, "http://localhost");
+      const memApp = caller.operator ? null : caller.app;
+      const memRefuse = (code, error) => {
+        log({ event: "memory-refused", app: memApp ? memApp.name : "operator", detail: String(error).slice(0, 300) });
+        jsonOut(code, { ok: false, error });
+      };
+      const ceilingOk = caller.operator || (Array.isArray(memApp?.grantCeiling) && memApp.grantCeiling.includes("memory"));
+      if (!ceilingOk) {
+        memRefuse(
+          403,
+          caller.operator
+            ? "the operator token holds every capability — this refusal is a wiring bug"
+            : `out of bounds: memory is not in ${memApp.name}'s ceiling — an app reads and writes durable memory only with the memory capability`,
+        );
+        return;
+      }
+      try {
+        if (req.method === "GET") {
+          const q = u.searchParams.get("q");
+          const graph = loadGraph(memoryStorePath());
+          if (q) return jsonOut(200, { ok: true, entities: searchGraph(graph, q, { limit: Number(u.searchParams.get("limit")) || 25 }) });
+          return jsonOut(200, { ok: true, stats: memoryStats(graph) });
+        }
+        if (req.method === "POST") {
+          let body;
+          try { body = JSON.parse(raw || ""); } catch { return jsonOut(400, { ok: false, error: "body is not valid JSON" }); }
+          const graph = loadGraph(memoryStorePath());
+          const result = {};
+          if (typeof body.entity === "string") {
+            const r = createEntities(graph, [{
+              name: String(body.entity).slice(0, 200),
+              entityType: caller.operator ? "operator" : `app:${caller.app.name}`,
+              observations: [String(body.observation ?? body.text ?? "")].filter(Boolean),
+            }]);
+            result.added = r.added;
+          } else if (Array.isArray(body.entities)) result.added = createEntities(graph, body.entities).added;
+          else if (Array.isArray(body.observations)) {
+            try { result.observations = addObservations(graph, body.observations).added; }
+            catch (e) { return jsonOut(400, { ok: false, error: String(e?.message ?? e) }); }
+          } else if (Array.isArray(body.relations)) result.relations = createRelations(graph, body.relations).added;
+          else return jsonOut(400, { ok: false, error: "send entity+observation, entities, relations, or observations" });
+          saveGraph(graph, memoryStorePath());
+          log({ event: "memory-write", app: caller.operator ? "operator" : caller.app.name, added: result.added?.length ?? 0 });
+          return jsonOut(200, { ok: true, ...result });
+        }
+        return jsonOut(405, { ok: false, error: "method not allowed" });
+      } catch (e) {
+        return jsonOut(500, { ok: false, error: String(e?.message ?? e).slice(0, 200) });
+      }
+    }
     if (req.method === "POST" && req.url === "/v1/runs") {
       let body;
       try {
@@ -2234,6 +2302,37 @@ const server = http.createServer((req, res) => {
       if (req.method === "GET" && req.url === "/api/setup") {
         setupState().then((s) => jsonOut(200, s));
         return;
+      }
+      // The durable memory plane, operator scope: search, stats, write.
+      // The store is the kit's own JSONL graph (workflow-plane/memory.mjs);
+      // writes are atomic and attributed in the router log.
+      if (req.url.startsWith("/api/memory")) {
+        const u = new URL(req.url, "http://localhost");
+        try {
+          if (req.method === "GET") {
+            const q = u.searchParams.get("q");
+            const graph = loadGraph(memoryStorePath());
+            if (q) return jsonOut(200, { ok: true, entities: searchGraph(graph, q, { limit: Number(u.searchParams.get("limit")) || 25 }) });
+            return jsonOut(200, { ok: true, stats: memoryStats(graph) });
+          }
+          if (req.method === "POST") {
+            let body;
+            try { body = JSON.parse(raw || ""); } catch { return jsonOut(400, { ok: false, error: "body is not valid JSON" }); }
+            const graph = loadGraph(memoryStorePath());
+            let result = { added: [] };
+            if (Array.isArray(body.entities)) result = createEntities(graph, body.entities);
+            if (Array.isArray(body.relations)) result.relations = createRelations(graph, body.relations).added;
+            if (Array.isArray(body.observations)) {
+              try { result.observations = addObservations(graph, body.observations).added; }
+              catch (e) { return jsonOut(400, { ok: false, error: String(e?.message ?? e) }); }
+            }
+            saveGraph(graph, memoryStorePath());
+            log({ event: "memory-write", caller: "operator", entities: result.added?.length ?? 0 });
+            return jsonOut(200, { ok: true, ...result });
+          }
+        } catch (e) {
+          return jsonOut(500, { ok: false, error: String(e?.message ?? e).slice(0, 200) });
+        }
       }
       // The agent control plane: every token holder the router knows about,
       // what each is running right now, and which runs are waiting on a human.

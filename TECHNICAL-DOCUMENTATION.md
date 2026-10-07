@@ -117,6 +117,8 @@ OpenAI-compatible, loopback-only, on `127.0.0.1:8300` (roster `router.port`). Al
 | POST | `/api/keys` | **operator, write-only**: `{"keys": {NAME: value}}` merges into the runtime `.env` (mode 600, comments preserved); the response carries `configured` booleans and never a value |
 | GET | `/api/setup` | the readiness checklist the `/setup` page renders — roster, keys, tiers, judge (live sys1 probe in non-typesafe modes), first request — computed server-side as `{steps, ready}` |
 | GET | `/api/agents` | the agent control plane: every token holder with its ceiling and workspace, runs attributed from the journals, and `attention` — escalations open right now |
+| GET/POST | `/api/memory` | the durable memory plane, operator scope: `?q=` search or stats; POST writes entities/relations/observations into the kit's JSONL graph |
+| GET/POST | `/v1/memory` | **app wire**: the same durable memory, refused by name unless the app's `grantCeiling` includes `memory`; writes typed `app:<name>` |
 | POST | `/v1/runs` | **run API**: spawn a workflow run (operator or app token; grants validated against the caller's ceiling; the journal records the caller; optional `awaitOwnerMs` holds open escalations for an in-the-moment answer, capped at 24h, default 0) |
 | POST | `/v1/runs/<id>/answers` | **run API**: answer a live escalation by topic (the spawning app or the operator) |
 | GET | `/v1/runs/<id>/artifacts` | **run API**: a run's artifact index; `?file=` downloads inside the run directory |
@@ -139,6 +141,7 @@ Contract and porting rules: `docs/features/workflow-runtime.md`. The generator: 
 
 - The router binds to `127.0.0.1` only; there are no user accounts, sessions, or roles — the machine boundary plus the bearer local token is the whole model.
 - **The `/api/` control plane is operator-class.** The routes that rewrite the roster (and re-run apply), read the ledger, enter keys, and list agents accept the operator token only — an app token gets `403` and acts through `/v1`, scoped by its ceiling, workspace and run ownership. (Before 2026-10-06 the block checked token validity alone; a token with an empty ceiling could rewrite the roster from the browser.)
+- **The durable memory plane is capability-gated on the app wire.** Apps read and write `~/.agnostic-router-kit/memory/memory.jsonl` through `/v1/memory` only when their `grantCeiling` includes `memory`; the operator surface (`/api/memory`) is operator-class. The MCP server (`bin/agnostic-router-memory.mjs`) serves the same store to harnesses over stdio.
 - **`POST /api/keys` is write-only by contract.** It merges `NAME=value` pairs into the runtime `.env` (line-wise, comments preserved, atomic, mode 600) and responds with `configured` booleans — a written value is never reflected back.
 - The run API adds a second token class: `roster.router.apps` rows (`name`, `token`, `grantCeiling`, optional `workdir`) are rendered into the runtime config beside `localToken`. An app token spawns runs under its ceiling — a grant outside it is refused by name and journaled — inside its own workspace root, and may answer or read artifacts only for runs it spawned. The operator token has no ceiling. Apps are explicit roster rows; there is no dynamic registration.
 - Upstream keys live only in `<kit home>/router/.env` (600). The roster references them by `apiKeyEnv` name; `roster.json` is committed and must never contain a raw key (`kit apply` warns if it does).
@@ -197,6 +200,7 @@ The plan-build-recap-document cycle: feature plan in `docs/plans/`, implementati
 
 | Command | What it does |
 |---------|--------------|
+| `kit memory` | the durable memory plane — `stats`, `search <q>`, `config` (the MCP wiring snippet), `gc [--dry-run]`, `import --from mnemosyne\|official --file f` |
 | `kit quickstart` | **the guided install** — asks a few questions (keys entered hidden), runs every step below, ends with a green doctor and the page links. `--yes` for scripted installs, `--force` to re-run over a healthy router, `--skip-install`, `--skip-service` (scratch homes, Windows, the desktop shell) |
 | `kit help` | the commands with their forms |
 | `kit status` | what is installed, where, and whether the service is up |

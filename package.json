@@ -6,7 +6,8 @@
   "type": "module",
   "bin": {
     "agnostic-router-kit": "bin/agnostic-router-kit.mjs",
-    "kit": "bin/agnostic-router-kit.mjs"
+    "kit": "bin/agnostic-router-kit.mjs",
+    "agnostic-router-memory": "bin/agnostic-router-memory.mjs"
   },
   "engines": {
     "node": ">=20"

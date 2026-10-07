@@ -39,6 +39,11 @@ mention what this repo is NOT; code paths may not).
 10. **`awaitOwnerMs` defaults to 0** — escalations resolve immediately unless
    a spawner opts into the owner wait. Don't flip the default: existing
    callers depend on degrade-fast.
+11. **The memory store is runtime state, never hand-edited.**
+    `~/.agnostic-router-kit/memory/memory.jsonl` is the durable memory plane
+    (JSONL, official MCP graph format). Mutate it through `kit memory`, the
+    MCP server, or the router routes — a hand edit is lost the next atomic
+    write, and a malformed line is skipped silently by design.
 
 ## Branch topology
 
@@ -66,6 +71,9 @@ model, quota/usage/ledger, judge (typesafe | fastino | cascade), dashboard,
 service. Wave 1 = the neutral core (this repo, this commit). Wave 2 = portable
 workflow library + vendored skill trees. Wave 3 = proxy-internal swarm.
 Wave 4 = dev-decisions composition. See the extraction plan.
+2026-10-07 wave: the memory plane — `lib/workflow/memory.mjs`, the native
+MCP server (`bin/agnostic-router-memory.mjs`), `kit memory`, `/api/memory`
++ `/v1/memory`, the `memory` capability, import from mnemosyne/official.
 2026-10-06 wave: `kit quickstart` (+ `lib/prompt.mjs`), `/setup` + `/chat`
 surfaces, the `/api/keys|setup|agents` control plane, owner-wait escalations
 (`awaitOwnerMs` in the plane), the Electron shell (`app/`), the Playwright

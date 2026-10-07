@@ -456,7 +456,7 @@ function welcome() {
     <p class="lead">Everything you say is <b>judged and routed</b> — quick work stays cheap, hard work gets the
     flagship. The rail on the right is your <b>fleet</b>: every connected agent, live, with its open questions.</p>
     <div class="ex"></div>
-    <p class="hintline"><kbd>⏎</kbd> send &nbsp;·&nbsp; <span class="mono">/run</span> starts a workflow &nbsp;·&nbsp; answers to agents appear in the rail</p>`;
+    <p class="hintline"><kbd>⏎</kbd> send &nbsp;·&nbsp; <span class="mono">/run</span> starts a workflow &nbsp;·&nbsp; <span class="mono">/remember ·</span> <span class="mono">/recall</span> durable memory &nbsp;·&nbsp; answers to agents appear in the rail</p>`;
   const ex = d.querySelector(".ex");
   for (const [g, t, q] of examples) {
     const b = document.createElement("button");
@@ -523,6 +523,8 @@ async function send() {
   if (!text || streaming) return;
   input.value = "";
   if (text.startsWith("/run")) return startRun(text.slice(4).trim());
+  if (text.startsWith("/remember ")) return remember(text.slice(10).trim());
+  if (text.startsWith("/recall")) return recall(text.slice(7).trim());
   userMsg(text);
   streaming = true;
   $("#send").disabled = true;
@@ -622,6 +624,30 @@ async function startRun(name) {
   }
 }
 function botNote(text) { const n = botMsg(); n.querySelector(".body").innerHTML = renderMarkdown(text); }
+
+/* ── the durable memory plane, from the same input box ────────────────── */
+async function remember(text) {
+  if (!text) { botErr("Remember what? `/remember <the fact>` — it goes into the kit's durable store."); return; }
+  userMsg(`/remember ${text}`);
+  try {
+    const r = await api("/api/memory", { method: "POST", body: JSON.stringify({ entities: [{ name: text.slice(0, 56), entityType: "memory", observations: [text, `remembered: ${new Date().toISOString().slice(0, 10)}`] }] }) });
+    botNote(`Remembered. The store now holds ${r.added?.length ? "a new memory" : "an updated memory"}. ${r.added?.length ? "" : "(a memory with that name already existed — use /recall to read it)"}`);
+  } catch (e) { botErr(`Could not remember: ${e.message}`); }
+}
+async function recall(q) {
+  userMsg(q ? `/recall ${q}` : "/recall");
+  try {
+    if (!q) {
+      const s = await api("/api/memory");
+      botNote(`The store holds **${s.stats.entities} memories** across ${s.stats.relations} relations. Ask: \`/recall <what>\``);
+      return;
+    }
+    const r = await api(`/api/memory?q=${encodeURIComponent(q)}`);
+    if (!(r.entities ?? []).length) { botNote(`Nothing remembered for **${q}** yet.`); return; }
+    const lines = r.entities.slice(0, 5).map((e) => `- **${e.name.replace(/ [#\[].*$/, "")}** — ${(e.observations[0] ?? "").slice(0, 160)}`);
+    botNote(`Remembered:\n${lines.join("\n")}`);
+  } catch (e) { botErr(`Could not recall: ${e.message}`); }
+}
 function botErr(text) { const n = botMsg(); n.classList.add("err"); n.querySelector(".body").textContent = text; }
 
 function runCard(runId, wf, who) {

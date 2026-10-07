@@ -79,6 +79,10 @@ below are light-theme renders; the interactive versions carry the file and line 
 - **Dashboard.** The router serves its own dashboard at `/dashboard` — the usage ledger, provider enable/disable,
   quota status, the delegation and workflow assignment view, live run activity, and a Save & apply button that writes
   the roster and re-renders it in place.
+- **A durable memory plane.** One JSONL knowledge graph under the kit home — entities, relations, observations in the
+  official MCP format — served to harnesses by a native zero-dependency MCP server (`kit memory config` prints the
+  wiring), to apps over `/v1/memory` behind the `memory` capability, and to you from the chat (`/remember`, `/recall`)
+  and the terminal (`kit memory`). Imports from mnemosyne or any graph-format store.
 - **A chat and an agent control plane.** `/chat` is a conversation with the router (streamed, verdict shown) beside a
   live view of every connected harness — its runs, its journals, and its open questions, answerable in place.
   `/setup` is the guided half of installation: the router computes what is missing, the browser collects it.
@@ -277,14 +281,14 @@ of globals: `args, agent, log, phase, report, escalate, artifact, files, git, wo
 roster.json                  the machine: providers (keys by env name), tiers, profiles, app rows
 templates/roster.defaults.json   starter roster for `kit init --template`
 bin/agnostic-router-kit.mjs  the `kit` CLI
-lib/                         roster model + resolution, render, .env, service, CLI, prompts
+lib/                         roster model + resolution, render, .env, service, CLI, prompts, the MCP memory server
 lib/workflow/                the plane: 14 modules — engine, runstate, checkpoint, tools, services,
                              transport, events, graph, harness, meta, schema, coerce, context, gitworld
 router/                      the proxy: server.js, quota, usage, suggest, swarm, fastino (sys1),
                              dashboard.html, setup.html, chat.html
 app/                         the Electron shell: preflight, owns-or-attaches the router, opens /chat
 workflows/                   the loop library + the one-pass workflows (.ts, runnable on the plane)
-tools/                       contract probes (run-api, keys-endpoint, chat-surface — zero model calls), compare-journals.py, visual/ (Playwright screenshots)
+tools/                       contract probes (run-api, keys-endpoint, chat-surface, memory — zero model calls), compare-journals.py, visual/ (Playwright screenshots)
 docs/architecture/           the interactive diagrams + overview.md, their light-theme stills, and the script that renders them
 docs/features/               per-feature records
 docs/plans/                  plan-as-contracts
