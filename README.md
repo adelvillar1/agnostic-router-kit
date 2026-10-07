@@ -197,8 +197,9 @@ generated. Commit the roster — it holds env-var *names*, never values — and 
   literal target.
 - **router.apps** — the second token class (see below): `token`, `grantCeiling`, `workdir`/workspace root.
 - **judge** — `mode: typesafe | fastino | cascade`, plus the sys1 endpoint and model settings.
-- **search / scrape** — the run's search backend and the operator's self-hosted Firecrawl (`FIRECRAWL_SCRAPE_URL`),
-  which is where page reading happens: free, bounded, and off the cloud bill.
+- **search / scrape** — the run's search backend — `auto` is keyless-first (DuckDuckGo) with Firecrawl as the quality
+  fallback — and the operator's self-hosted Firecrawl (`FIRECRAWL_SCRAPE_URL`), the middle rung of the scrape ladder:
+  local moli first (the `browser` grant, default-off), Firecrawl when the browser can't, plain fetch as the floor.
 
 `templates/roster.defaults.json` documents every field with its default.
 
@@ -247,8 +248,9 @@ of globals: `args, agent, log, phase, report, escalate, artifact, files, git, wo
 
 - **Grants, not ambient power.** Every capability a run uses is declared at spawn and journalled against the call that
   used it. Default-on: workspace io, the process allowlist, the test runner. Opt-in: package installs, net fetch, net
-  search, sub-agents. A missing grant refuses by name — `capability not granted in this run: net-search` — and the run
-  continues without it.
+  search, sub-agents, and local browsing via moli (the `browser` grant, default-off) with keyless-first search — see
+  [`docs/features/browsing.md`](docs/features/browsing.md). A missing grant refuses by name —
+  `capability not granted in this run: net-search` — and the run continues without it.
 - **The journal is the record.** `run.jsonl` holds phases, agent and tool calls, escalations and answers, commands with
   their costs, checkpoints, and the closing `run-done` / `run-failed`. `summary.json` is the run's answer.
 - **Escalation has a ranked ladder.** Declared answers, then the live `answers.jsonl`, then a question-substring match,
@@ -322,8 +324,10 @@ service keeps the runtime copy alive, so `git pull` + `kit upgrade` never moves 
 - `kit` manages macOS launchd and Linux systemd user units; on other platforms it tells you how to run the router by
   hand — or lets the desktop shell own the process (started with the app, dead with it).
 - No artificial token limits anywhere; `routing.wideChars` only diverts oversized payloads to the wide-context model.
-- Scraping needs an operator-hosted Firecrawl (`FIRECRAWL_SCRAPE_URL`). Unset, enrichment skips by name and the run
-  proceeds on search rows — a configured absence, not a crash.
+- Scraping runs a ladder: local moli first (the `browser` grant, default-off; `kit doctor` reports the install), then
+  an operator-hosted Firecrawl (`FIRECRAWL_SCRAPE_URL`), then plain bounded fetch — the journal's `via` names the leg
+  that answered. With neither browser nor Firecrawl configured, JS-rendered pages read thin and deep-research
+  enrichment skips by name — configured absences, not crashes.
 
 ## Roadmap
 
@@ -331,7 +335,9 @@ Shipped 2026-10-05/06: the run API (`POST /v1/runs`, live escalation answers, ar
 [`docs/features/run-api.md`](docs/features/run-api.md)) and the loop library
 ([`docs/features/loop-library.md`](docs/features/loop-library.md)) — deep-research, remediate, triage, refine-loop,
 red-team, watchdog, router-eval — with flat judgments riding the sys1 judge layer and search credits budgeted inside
-the workflow.
+the workflow. Shipped 2026-10-07: local browsing — rendered pages and scrapes through the operator-installed moli
+browser (the `browser` grant, default-off), keyless-first search, `kit doctor` reporting the stack
+([`docs/features/browsing.md`](docs/features/browsing.md)).
 
 Next, in the plans' own words: swarm execution on the wire (the run-API plan's wave 3); an AG-UI render of the run event
 stream, whose journal kinds already map onto its typed events; cross-process resume of failed runs and cross-run memory;

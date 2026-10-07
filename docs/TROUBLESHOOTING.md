@@ -37,3 +37,26 @@ learned about it.
   cause: the duplicated `workflows` key pair in `/api/state` (later key won)
   hid the shape. Remediation: the registry is an array — `.map(w => w.name)`;
   the shape assertions in probe-chat-surface (section S) guard it.
+
+## Browser-rendered scrapes / web_render
+
+The local browsing stack (2026-10-07): rendered fetch and scrapes run through
+the moli binary behind the `browser` grant; search is keyless-first
+([`docs/features/browsing.md`](browsing.md)).
+
+- **`web_render` refused.** Either the run was spawned without the grant
+  (`capability not granted in this run: browser` — the refusal is journalled)
+  or moli is not on PATH (*"browser not installed — the browser grant needs
+  moli on PATH"*). Remediation: re-spawn with `--grant browser`, and install
+  the pinned moli release per `docs/features/browsing.md` — `kit doctor`
+  reports which of the two it is.
+- **Rendered content is still thin.** Some sites only paint behind moli's
+  layout mode, which the `browser-layout` grant (not plain `browser`) gates.
+  Remediation: spawn with `--grant browser-layout` and a `waitSelector` for
+  the selector the page paints late.
+- **Search returned few rows.** DuckDuckGo rate-limits or comes up empty;
+  `auto` falls back to Firecrawl only when `FIRECRAWL_API_KEY` resolves —
+  without the key, DDG's (possibly empty) answer is the honest result.
+  Remediation: check the journal line's `via`/backend to see which leg
+  answered, then set the key or pin `backend: "duckduckgo"|"firecrawl"`
+  explicitly.
