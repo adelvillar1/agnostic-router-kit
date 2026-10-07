@@ -1075,6 +1075,16 @@ function runKitApply(args) {
 }
 
 async function applyRoster(candidate) {
+  // Strip render-derived artifacts the dashboard merges into provider rows:
+  // hasKey is runtime state (the runtime .env decides), id duplicates the
+  // object key. The tracked roster is the curated source — it never carries
+  // the dashboard's derived columns.
+  if (candidate && typeof candidate === "object" && candidate.providers) {
+    for (const key of Object.keys(candidate.providers)) {
+      const p = candidate.providers[key];
+      if (p && typeof p === "object") { delete p.hasKey; delete p.id; }
+    }
+  }
   const current = readRoster();
   const backup = current.ok ? JSON.stringify(current.roster, null, 2) + "\n" : null;
   const tmp = `${ROSTER_PATH}.tmp-dashboard`;
