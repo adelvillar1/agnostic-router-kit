@@ -148,3 +148,121 @@ seeding, live answers via `answers.jsonl`.
   only cap. A per-round wall-clock budget would make slow runs predictable.
 - **Nothing is committed on the zcode-router-kit side.** Per the user, that
   edition stays as-is.
+
+---
+
+# Session 2 — 2026-10-06 (evening): the guided install, the bot surface, and the control plane
+
+## Summary
+
+The kit gained its front door and its face: `kit quickstart` walks a new user
+from clone to a green doctor; the router now serves `/chat` — a conversation
+with the routing verdict under every reply, beside a live control plane for
+every connected agent — and `/setup`, whose checklist the router itself
+computes; escalations can hold for a human (`awaitOwnerMs`), which the wave
+discovered was previously impossible over the run API; and an Electron shell
+opens the whole thing in a window. A user directive mid-wave reshaped the
+surfaces: **precision-instrument design, both themes first-class, verified by
+committed Playwright screenshots.**
+
+## Plans worked on
+
+### `docs/plans/2026-10-06-install-and-bot-surface.md` — easier installation, a guided path, and the bot surface
+
+Status after this session: **completed** (was written completed; C11, the one
+criterion deliberately left open in-flight, was closed the same evening).
+
+| Acceptance criterion | Status | Notes |
+|---|---|---|
+| C0 `kit help` / unknown-command contract | ✅ met | help exits 0 with descriptions; unknown exits 1 |
+| C1 spawned runs visible everywhere | ✅ met | probe-chat-surface R; kit-home default asserted in-process |
+| C2 `/api` gate operator-only | ✅ met | probe-keys-endpoint C: app tokens 403 everywhere, bad token 401 |
+| C3 `/api/keys` write-only | ✅ met | value in `.env` (600), never in a response, cache invalidated |
+| C4 quickstart parity + doctor green | ✅ met | roster key-for-key identical to `kit init --template`; live doctor green |
+| C5 re-run guard + resume | ✅ met | refuses politely non-interactive; every step checks before acting |
+| C6 `/setup` readiness is the router's verdict | ✅ met | checklist flips only after the browser write |
+| C7 chat + escalation round trip | ✅ met | attention shows, live answer resolves `source: "live"`, clears |
+| C8 power-user path unchanged | ✅ met | and `kit init --template` fixed in passing (its own template broke it) |
+| C9 Electron shell attach/own/fail paths | ✅ met | live under real Electron via `--preflight-check` |
+| C10 syntax + neutrality + regression probes | ✅ met | 30/30 + 14/14 + 33/33 after the engine change |
+| C11 diagrams refreshed through archify | ✅ met | closed same evening as `0041c42` (see Session 3 below) |
+
+## Commits
+
+| Hash | Message |
+|------|---------|
+| `a307936` | feat: the guided install and the bot surface — quickstart, /setup, /chat, the desktop shell |
+| `7b43a40` | docs: the doc-sync pass that should have shipped with a307936 |
+| `0041c42` | docs: the diagrams caught up — C11 closed through archify |
+
+## What was added
+
+- **`kit quickstart`** (`lib/cli.mjs` + `lib/prompt.mjs`): seven resumable steps in
+  the README's documented order, keys entered hidden, artifacts byte-identical
+  to the manual path. Piped stdin is slurped into a queue — per-prompt
+  readline listeners race and the wizard died mid-run with exit 0.
+- **The control plane** (`router/server.js`): `POST /api/keys` (write-only by
+  contract), `GET /api/setup` (the router computes readiness; pages render),
+  `GET /api/agents` (every token holder, runs attributed from journals,
+  `attention` = escalations open now). The whole `/api/` block is operator-only;
+  before this wave an app token with an empty ceiling could rewrite the roster.
+- **`/chat` and `/setup`** (`router/chat.html`, `router/setup.html`): the bot
+  interface and the guided half in the browser, in a shared
+  precision-instrument design language (no CDN, no build step, no webfonts).
+  Replies render escape-first markdown with the verdict as a mono footer.
+  `?demo=1` is a badged synthetic fixture for design iteration without a model.
+- **Owner-wait escalations** (`lib/workflow/engine.mjs`): `awaitOwnerMs` holds an
+  unanswered escalation open and polls the live answers file — before it,
+  `answerEscalation` resolved in ~1ms over the run API and no human could ever
+  answer in the moment. Default 0; capped 24h; the chat spawns with 5 minutes.
+- **The Electron shell** (`app/`): preflight → attach to a healthy service or
+  own the router as a child → a window on `/chat`. Verified live under real
+  Electron on the owned, attached, and failure paths.
+- **The visual loop** (`tools/visual/probe-visual.mjs`, Playwright): seven real
+  states captured into `docs/screens/`, including a genuinely-open escalation
+  spawned mid-capture.
+
+## What was fixed (found by the work, not by filed bugs)
+
+- `kit help` printed `kit undefined` nine times; HTTP-spawned runs were
+  invisible (watcher and plane defaulted the kit home differently); the `/api`
+  block was app-token reachable; root `engines.node` said 18; and
+  `kit init --template` crashed on its own commented template (`parseJsonc`,
+  string-aware because every baseUrl contains `//`).
+- Page routes matched `req.url` exactly, so `/chat?demo=1` fell through to the
+  bearer gate; both new pages were missing the `.hidden` CSS rule (the DOM
+  dump said hidden, the screenshot said otherwise — trust pixels); the Electron
+  preflight exited before its owned child died, orphaning a router on the
+  probe's port (probes now refuse a port that already answers).
+
+## Doc updates applied
+
+- `README.md` — one-command quickstart, the surfaces section with embedded
+  screenshots, safety model, layout.
+- `TECHNICAL-DOCUMENTATION.md` — §2 stack, §5 route table (new endpoints +
+  `awaitOwnerMs`), §7 security model (operator gate, write-only keys), §8
+  retitled to Surfaces, §10 deployment, §12 CLI reference.
+- `docs/features/quickstart.md`, `docs/features/chat-surface.md` (new),
+  `docs/features/run-api.md` (owner wait), `router/README.md` (surfaces),
+  `CLAUDE.md` (four new hard rules), `docs/architecture/overview.md`,
+  both archify candidates + re-rendered stills, and the plan doc.
+
+## Open questions / next steps
+
+- The dashboard keeps its power-console skin; the shared design tokens make a
+  reskin a follow-up if wanted, not a debt.
+- One advisory route crossing remains flagged on the system-overview render —
+  inspected, close but not tangled.
+- Electron packaging is configured but untested until a real `electron-builder`
+  run; codesigning/notarization and Windows remain unverified by design.
+- `tools/guard.sh` guard 3 still pins the other edition's deployed config hash
+  (drifted machine-side before this session — deliberately left alone).
+
+## Notes
+
+The wave's verification posture: 30 + 14 + 33 probe checks and 7 committed
+visual states, all zero-model-call against scratch runtimes. Three tooling
+lessons now in memory: docs sync with the code, not after (the user said so);
+pixels over DOM dumps; and chromium children hold stdio pipes, so piped probe
+runs end with an explicit exit. Wrapped up: the session's stray scratch router
+on :8395 killed; process-registry sweep clean (0 registered, 0 orphans).
