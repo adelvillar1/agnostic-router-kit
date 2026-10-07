@@ -66,6 +66,11 @@ browserSession({ layout = false, profileDir = null })  // v2 tier
 - [ ] **C5** probes: new unit-services-browser green (moli present here); full `npm test` green in the engine AND the kit; `check:port` green.
 - [ ] **C6** docs in-wave: features/browsing.md, README, doctor, TROUBLESHOOTING, specs; plan closed; recap.
 
+## Incident / install record
+
+- moli **v1.1.14** installed to `/opt/homebrew/bin/moli` (2026-10-07), tarball sha256 `db123f0fe3ccb25149a2a756ff71eb08e640854ba89bc2f42f2dcd73a526eec4` (moli-aarch64-apple-darwin.tar.gz). Linux/Windows checksums: pin at install time from the release page.
+- W1 deviation, accepted: `scrapeUrl`'s options bag keeps `baseUrl`/`apiVersion`/`apiKeyEnv`/`envMap` — `engine.mjs:456` already calls it with those; dropping them would have broken an existing call site outside W1's scope.
+
 ## Out of scope
 
 - Bundling/auto-downloading the moli binary; running `--layout` without the `browser-layout` grant; replacing the Firecrawl *search quality* — DDG is the keyless default, Firecrawl stays the quality fallback.

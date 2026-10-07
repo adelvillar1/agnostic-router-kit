@@ -124,4 +124,10 @@ const server = http.createServer((req, res) => {
   });
 });
 
+// A taken port must be loud, never silently shared: a leftover fake from a
+// crashed run would otherwise serve stale hit counters to a new probe run.
+server.on("error", (e) => {
+  console.error(`fake-upstream ${TAG}: could not listen on 127.0.0.1:${PORT} (${e?.code ?? e}) — kill the process holding the port and rerun.`);
+  process.exit(1);
+});
 server.listen(PORT, "127.0.0.1", () => console.log(`fake-upstream ${TAG} on 127.0.0.1:${PORT}`));
