@@ -12,7 +12,7 @@
       "url": "git@github.com:adelvillar1/agnostic-router-kit.git",
       "provider": "github",
       "link_mode": "local-only",
-      "revision": "3e51469bfd85e0f303c321f123a128cbde26b2ad"
+      "revision": "3c74a4b6f86450a02be1e5825342ecb37d62cb02"
     },
     "views": [
       {
@@ -232,8 +232,8 @@
       "sources": [
         {
           "path": "lib/workflow/services.mjs",
-          "line": 374,
-          "end_line": 407,
+          "line": 450,
+          "end_line": 483,
           "label": "searchWeb"
         }
       ],
@@ -266,6 +266,34 @@
       ],
       "size": [
         176,
+        64
+      ]
+    },
+    {
+      "id": "devdec",
+      "type": "external",
+      "label": "dev-decisions · sdm1",
+      "sublabel": "calibration store · the tabular lane",
+      "icon": "external",
+      "sources": [
+        {
+          "path": "lib/workflow/services.mjs",
+          "line": 250,
+          "label": "tabular"
+        },
+        {
+          "path": "workflows/quota-forecast.ts",
+          "line": 1,
+          "end_line": 30,
+          "label": "quota-forecast loop"
+        }
+      ],
+      "pos": [
+        270,
+        436
+      ],
+      "size": [
+        200,
         64
       ]
     },
@@ -431,7 +459,7 @@
       "sources": [
         {
           "path": "lib/workflow/services.mjs",
-          "line": 298,
+          "line": 374,
           "label": "duckduckgo · firecrawl"
         }
       ],
@@ -716,6 +744,13 @@
       "from": "plane",
       "to": "memplane",
       "label": "remembers · recalls",
+      "variant": "dashed"
+    },
+    {
+      "id": "judge-devdec",
+      "from": "judge",
+      "to": "devdec",
+      "label": "calibration rows",
       "variant": "dashed"
     }
   ],
