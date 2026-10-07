@@ -290,7 +290,13 @@ router/                      the proxy: server.js, quota, usage, suggest, swarm,
                              dashboard.html, setup.html, chat.html
 app/                         the Electron shell: preflight, owns-or-attaches the router, opens /chat
 workflows/                   the loop library + the one-pass workflows (.ts, runnable on the plane)
-tools/                       contract probes (run-api, keys-endpoint, chat-surface, memory — zero model calls), compare-journals.py, visual/ (Playwright screenshots)
+tools/                       the enforced suite: `npm test` (tools/run-probes.mjs) runs every test-*.mjs,
+                             unit-*.mjs and probe-*.mjs by glob, sequentially (fixed per-probe ports).
+                             probes drive scratch routers end to end — run-api, keys-endpoint, chat-surface,
+                             memory (api/mcp/store), failover (/v1 against tools/fake-upstream.mjs, the
+                             scripted provider whose model names encode failures). Zero model calls, zero
+                             real network. visual/ is the separate Playwright pass.
+.github/workflows/ci.yml     one job: npm test on node 20. Green or it doesn't merge.
 docs/architecture/           the interactive diagrams + overview.md, their light-theme stills, and the script that renders them
 docs/features/               per-feature records
 docs/plans/                  plan-as-contracts

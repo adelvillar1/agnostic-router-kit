@@ -1,0 +1,30 @@
+# One job: npm test. That is deliberately the whole CI.
+#
+# The suite is zero-model-call and zero-real-network by design: every probe
+# spawns a scratch router on its own AGNOSTIC_ROUTER_KIT_HOME, talks to
+# 127.0.0.1 only (the providers are tools/fake-upstream.mjs instances), and
+# leaves no state behind. tools/guard.sh and tools/compare-journals.py need
+# the sibling edition's checkout and stay local-only.
+#
+# Deliberately NOT copied from bigger projects: merge queues, multi-OS
+# sharding, duration-sequenced shards. One green job on node 20 is the gate.
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm test

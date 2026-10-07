@@ -197,6 +197,8 @@ Side-by-side instances (tests, experiments): `AGNOSTIC_ROUTER_KIT_HOME=/tmp/othe
 
 The plan-build-recap-document cycle: feature plan in `docs/plans/`, implementation on a branch, evidence-gated acceptance criteria, session recap, then the housekeeping protocol in `CLAUDE.md` (update the feature doc and the two spec files in the same change). Commits are conventional-prefixed and made by the developer — never automatically by a tool.
 
+Verification is enforced: `npm test` (tools/run-probes.mjs) runs every `tools/{test,unit,probe}-*.mjs` by glob, sequentially — each probe owns a fixed 127.0.0.1 port. The probes are zero-model-call and zero-real-network: each spawns a scratch router (own `AGNOSTIC_ROUTER_KIT_HOME`, rendered through `kit apply`) and asserts wire contracts; `probe-failover` additionally spawns `tools/fake-upstream.mjs` instances — a scripted OpenAI-compatible provider whose model names encode behaviors (`-429ra5`, `-401`, `-402`, `-500`, `-400`, `-stream`) — to exercise the full `/v1` failover, steering, benching, and streaming-meter paths. CI is one job running `npm test` on node 20.
+
 ## 12. CLI Reference
 
 | Command | What it does |
