@@ -138,7 +138,7 @@
       "id": "scrape",
       "lane": "ext",
       "col": 2,
-      "type": "cloud",
+      "type": "backend",
       "label": "Read the candidates",
       "sublabel": "moli first · Firecrawl falls back · fetch last",
       "width": 227,
