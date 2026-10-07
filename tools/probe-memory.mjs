@@ -49,6 +49,10 @@ createRelations(graph, [{ from: "agnostic-router-kit", to: "memory plane", relat
 addObservations(graph, [{ entityName: "memory plane", contents: ["JSONL graph format"] }]);
 saveGraph(graph, store);
 ok("store file exists after save", fs.existsSync(store));
+{
+  const st = fs.statSync(store);
+  ok("the store lands 600 — agent memory is never world-readable", (st.mode & 0o777) === 0o600, (st.mode & 0o777).toString(8));
+}
 
 const reread = loadGraph(store);
 ok("roundtrip: entities survive", reread.entities.length === 2);

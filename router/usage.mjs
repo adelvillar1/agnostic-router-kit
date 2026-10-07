@@ -16,6 +16,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Transform } from "node:stream";
+import { writeFileAtomic } from "./atomic.mjs";
 
 const DAY_MS = 86400000;
 const KEEP_DAYS = 30;
@@ -328,9 +329,7 @@ export function createUsage({ file, weightOf } = {}) {
     if (!file) return;
     try {
       fs.mkdirSync(path.dirname(file), { recursive: true });
-      const tmp = `${file}.tmp`;
-      fs.writeFileSync(tmp, JSON.stringify(state, null, 1) + "\n");
-      fs.renameSync(tmp, file);
+      writeFileAtomic(file, JSON.stringify(state, null, 1) + "\n");
       dirty = false;
     } catch {}
   }

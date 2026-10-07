@@ -35,6 +35,7 @@ import { offpeakWeight, computeQuotaState, pickCandidate } from "./quota.mjs";
 import { suggestDelegation } from "./suggest.mjs";
 import { judgeViaFastino } from "./fastino.mjs";
 import { classifyFailure, rememberKeyRejection, keyRejectionView } from "./failclass.mjs";
+import { writeFileAtomic } from "./atomic.mjs";
 import { createSwarm } from "./swarm.mjs";
 import { normalizeEvent, isTerminal } from "workflow-plane/events.mjs";
 import { buildGraph } from "workflow-plane/graph.mjs";
@@ -1096,17 +1097,14 @@ async function applyRoster(candidate) {
   }
   const current = readRoster();
   const backup = current.ok ? JSON.stringify(current.roster, null, 2) + "\n" : null;
-  const tmp = `${ROSTER_PATH}.tmp-dashboard`;
-  fs.writeFileSync(tmp, JSON.stringify(candidate, null, 2) + "\n");
-  fs.renameSync(tmp, ROSTER_PATH);
+  writeFileAtomic(ROSTER_PATH, JSON.stringify(candidate, null, 2) + "\n");
   const first = await runKitApply(["apply", "--only", "router"]);
   if (first.code === 0) {
     return { ok: true, output: first.output, restartRecommended: /copied /.test(first.output) };
   }
   let output = first.output;
   if (backup !== null) {
-    fs.writeFileSync(tmp, backup);
-    fs.renameSync(tmp, ROSTER_PATH);
+    writeFileAtomic(ROSTER_PATH, backup);
     const rollback = await runKitApply(["apply", "--only", "router,provider"]);
     output += `\n— apply failed; roster restored and resynced (exit ${rollback.code}) —\n${rollback.output}`;
   } else {

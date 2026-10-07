@@ -7,6 +7,7 @@
     "node": ">=20"
   },
   "exports": {
+    "./atomic.mjs": "./atomic.mjs",
     "./checkpoint.mjs": "./checkpoint.mjs",
     "./coerce.mjs": "./coerce.mjs",
     "./context.mjs": "./context.mjs",
@@ -24,7 +25,7 @@
     "./transport.mjs": "./transport.mjs"
   },
   "scripts": {
-    "check": "node --check ./checkpoint.mjs && node --check ./coerce.mjs && node --check ./context.mjs && node --check ./engine.mjs && node --check ./events.mjs && node --check ./gitworld.mjs && node --check ./graph.mjs && node --check ./harness.mjs && node --check ./memory.mjs && node --check ./meta.mjs && node --check ./runstate.mjs && node --check ./schema.mjs && node --check ./services.mjs && node --check ./tools.mjs && node --check ./transport.mjs"
+    "check": "node --check ./atomic.mjs && node --check ./checkpoint.mjs && node --check ./coerce.mjs && node --check ./context.mjs && node --check ./engine.mjs && node --check ./events.mjs && node --check ./gitworld.mjs && node --check ./graph.mjs && node --check ./harness.mjs && node --check ./memory.mjs && node --check ./meta.mjs && node --check ./runstate.mjs && node --check ./schema.mjs && node --check ./services.mjs && node --check ./tools.mjs && node --check ./transport.mjs"
   },
   "keywords": [
     "workflow",
