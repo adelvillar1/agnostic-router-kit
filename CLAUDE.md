@@ -1,3 +1,25 @@
+## Today's state
+
+Created 2026-10-04 by extraction from zcode-router-kit: proxy core, roster
+model, quota/usage/ledger, judge (typesafe | fastino | cascade), dashboard,
+service. Wave 1 = the neutral core (this repo, this commit). Wave 2 = portable
+workflow library + vendored skill trees. Wave 3 = proxy-internal swarm.
+Wave 4 = dev-decisions composition. See the extraction plan.
+2026-10-07 wave: the memory plane — `lib/workflow/memory.mjs`, the native
+MCP server (`bin/agnostic-router-memory.mjs`), `kit memory`, `/api/memory`
++ `/v1/memory`, the `memory` capability, import from mnemosyne/official.
+2026-10-06 wave: `kit quickstart` (+ `lib/prompt.mjs`), `/setup` + `/chat`
+surfaces, the `/api/keys|setup|agents` control plane, owner-wait escalations
+(`awaitOwnerMs` in the plane), the Electron shell (`app/`), the Playwright
+visual probe (`tools/visual/`) — `docs/plans/2026-10-06-install-and-bot-surface.md`.
+2026-10-07 hardening wave: `npm test` (16 suites) + one-job CI as the gate;
+`router/failclass.mjs` classifies before benching; ledger rows carry trigger +
+declared-price cost; durable writes atomic; the kit edition carries the port.
+2026-10-07 browsing wave: moli v1.1.14 installed (`/opt/homebrew/bin/moli`);
+`browserFetch`/`scrapeUrl` (moli → self-hosted Firecrawl → fetch, `via`
+journaled), `browser`/`browser-layout` grants (default-off), `web_render`,
+keyless-first search (`auto`: DuckDuckGo, Firecrawl fallback) — see
+docs/plans/2026-10-07-local-browsing.md and docs/features/browsing.md.
 # agnostic-router-kit — house rules
 
 This repo is the harness-agnostic edition: the router and roster are neutral
@@ -66,18 +88,10 @@ Plan-as-contracts go in `docs/plans/YYYY-MM-DD-<slug>.md`.
 
 ## Today's state
 
-Created 2026-10-04 by extraction from zcode-router-kit: proxy core, roster
-model, quota/usage/ledger, judge (typesafe | fastino | cascade), dashboard,
-service. Wave 1 = the neutral core (this repo, this commit). Wave 2 = portable
-workflow library + vendored skill trees. Wave 3 = proxy-internal swarm.
-Wave 4 = dev-decisions composition. See the extraction plan.
-2026-10-07 wave: the memory plane — `lib/workflow/memory.mjs`, the native
-MCP server (`bin/agnostic-router-memory.mjs`), `kit memory`, `/api/memory`
-+ `/v1/memory`, the `memory` capability, import from mnemosyne/official.
-2026-10-06 wave: `kit quickstart` (+ `lib/prompt.mjs`), `/setup` + `/chat`
-surfaces, the `/api/keys|setup|agents` control plane, owner-wait escalations
-(`awaitOwnerMs` in the plane), the Electron shell (`app/`), the Playwright
-visual probe (`tools/visual/`) — `docs/plans/2026-10-06-install-and-bot-surface.md`.
+- Hardening wave (2026-10-07): `npm test` (16 suites) is the gate with one-job CI; `router/failclass.mjs` classifies before benching; ledger rows carry trigger + declared-price cost; durable writes atomic. The kit edition carries the port.
+- Local browsing (2026-10-07, later wave): moli v1.1.14 installed (`/opt/homebrew/bin/moli`); the plane gained `browserFetch`/`scrapeUrl` (moli → self-hosted Firecrawl → fetch, `via` journaled), `browser`/`browser-layout` grants (default-off), `web_render`, and keyless-first search (`auto`: DuckDuckGo, Firecrawl fallback). See docs/plans/2026-10-07-local-browsing.md and docs/features/browsing.md.
+- The kit edition consumed this plane at a5ddac8's parent — its 2026-10-07 hardening port predates the browsing wave; shipping browsing to the kit is a future `git pull` + `kit apply` there.
+- Six-stage cycle: warmup → plan → build → recap → wrapup (recaps land in `docs/recaps/`). Plan-as-contracts go in `docs/plans/YYYY-MM-DD-<slug>.md`.
 
 ## Housekeeping
 

@@ -1,5 +1,5 @@
 ---
-status: active
+status: completed
 created: 2026-10-07
 updated: 2026-10-07
 slug: local-browsing
@@ -58,18 +58,26 @@ browserSession({ layout = false, profileDir = null })  // v2 tier
 
 ## Acceptance criteria
 
-- [ ] **C0** moli installed at the pinned version (checksum recorded in this plan's incident section); `kit doctor` reports it.
-- [ ] **C1** `browserFetch`/`scrapeUrl`/`searchWeb` match the pinned interfaces; allowlist + caps discipline identical to fetchUrl.
-- [ ] **C2** `world.scrape` routes moli → self-hosted Firecrawl → fetch, with `via` in the journal; deep-research reads show `via` per row.
-- [ ] **C3** search `auto` prefers keyless DuckDuckGo; Firecrawl demoted to fallback (and unused when its key is absent); explicit backends still pin.
-- [ ] **C4** `web_render` behind the `browser` grant, default-off, refusal journaled when absent; serve tier behind `browser-layout` + playwright-peer refusal sentence exactly as pinned.
-- [ ] **C5** probes: new unit-services-browser green (moli present here); full `npm test` green in the engine AND the kit; `check:port` green.
-- [ ] **C6** docs in-wave: features/browsing.md, README, doctor, TROUBLESHOOTING, specs; plan closed; recap.
+- [x] **C0** moli installed at the pinned version (checksum recorded in this plan's incident section); `kit doctor` reports it.
+- [x] **C1** `browserFetch`/`scrapeUrl`/`searchWeb` match the pinned interfaces; allowlist + caps discipline identical to fetchUrl.
+- [x] **C2** `world.scrape` routes moli → self-hosted Firecrawl → fetch, with `via` in the journal; deep-research reads show `via` per row.
+- [x] **C3** search `auto` prefers keyless DuckDuckGo; Firecrawl demoted to fallback (and unused when its key is absent); explicit backends still pin.
+- [x] **C4** `web_render` behind the `browser` grant, default-off, refusal journaled when absent; serve tier behind `browser-layout` + playwright-peer refusal sentence exactly as pinned.
+- [x] **C5** probes: new unit-services-browser green (moli present here); full `npm test` green in the engine AND the kit; `check:port` green.
+- [x] **C6** docs in-wave: features/browsing.md, README, doctor, TROUBLESHOOTING, specs; plan closed; recap.
 
 ## Incident / install record
 
 - moli **v1.1.14** installed to `/opt/homebrew/bin/moli` (2026-10-07), tarball sha256 `db123f0fe3ccb25149a2a756ff71eb08e640854ba89bc2f42f2dcd73a526eec4` (moli-aarch64-apple-darwin.tar.gz). Linux/Windows checksums: pin at install time from the release page.
 - W1 deviation, accepted: `scrapeUrl`'s options bag keeps `baseUrl`/`apiVersion`/`apiKeyEnv`/`envMap` — `engine.mjs:456` already calls it with those; dropping them would have broken an existing call site outside W1's scope.
+
+## What landed (deviations recorded honestly)
+
+- **The scrape router was already live when W2 ran**: `world.scrape` called `scrapeUrl` before this wave (the self-hosted-Firecrawl scrape), so W1's moli-first reordering reached deep-research with zero workflow changes — verified by reading engine.mjs, and W2-B took the honest branch (no browser retry; a retry would replay the identical ladder). Instead: `via` on every row, `thin` marks, sources-by-path tallies per round and in the report.
+- **browserSession is lifecycle-thin by design**: spawn/health/close with the moli-absent refusal pinned verbatim; Playwright-driven page automation (the optional peer) is the declared v2 boundary and is not wired — nothing pretends otherwise.
+- **Two integration fixes landed in W3 (mine)**: `engine.mjs` recordTool dropped `via`/`bytes`/`truncated` from web_render's stream line, and `lib/cli.mjs` hard-pinned `backend: "firecrawl"` for CLI-run workflows — both found by the W2 agents, both fixed (backend is now `"auto"`, the de-Firecrawl default).
+- **probe-keys-endpoint is intermittently red under full-suite load** (2 of 4 full runs this session, always green standalone and on immediate re-run; 30/0). Pre-wave it was stable — root-causing the load sensitivity is an open seam, not buried.
+- check-plane reports the installed runtime (`~/.zcode/lib/workflow`) 3 modules stale — true, and the fix is the operator's `kit apply` (a live-service restart), deliberately not done mid-session. The kit's own suite is green against the new plane via its scratch applies.
 
 ## Out of scope
 
