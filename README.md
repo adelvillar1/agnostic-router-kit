@@ -73,7 +73,7 @@ below are light-theme renders; the interactive versions carry the file and line 
 - **The run API.** `POST /v1/runs` starts a run for an app token, `POST /v1/runs/<id>/answers` answers its escalations
   live, `GET /v1/runs/<id>/artifacts` reads what it produced. Ownership is re-derived from the journal, so a restart
   never reopens the door.
-- **A loop library.** Fifteen loops over the plane, in three lanes, plus the one-pass workflows they were built
+- **A loop library.** Sixteen loops over the plane, in four lanes, plus the one-pass workflows they were built
   from. Seven loop shapes anchor the library — deep-research, remediate, triage, refine-loop, red-team, watchdog,
   router-eval. Six tabular loops ride the dev-decisions
   lane: quota-forecast (per-plan exhaustion bands, an in-band crossing escalates), flake-watch (known-flaky suites
@@ -92,6 +92,12 @@ below are light-theme renders; the interactive versions carry the file and line 
   router-eval neighbor annotations, and the shadow router as consumers of the
   lane rather than loops. Embeddings propose, sys1/sdm1 dispose. See
   [`docs/features/semantic-lane.md`](docs/features/semantic-lane.md).
+  The diagram lane keeps the repo's own architecture diagrams honest: every node
+  carries source refs pinned to file, lines, and commit, and diagram-refresh
+  audits them by byte-identity against the pin, re-pins the ones that purely
+  moved, finalizes through the archify CLI, and renders the stills. The loop
+  anchors claims; authoring them stays with the agent, and the stills stay read
+  by a human. See [`docs/features/diagram-lane.md`](docs/features/diagram-lane.md).
 - **Dashboard.** The router serves its own dashboard at `/dashboard` — the usage ledger, provider enable/disable,
   quota status, the delegation and workflow assignment view, live run activity, and a Save & apply button that writes
   the roster and re-renders it in place.
@@ -265,9 +271,10 @@ of globals: `args, agent, log, phase, report, escalate, artifact, files, git, wo
 - **Grants, not ambient power.** Every capability a run uses is declared at spawn and journalled against the call that
   used it. Default-on: workspace io, the process allowlist, the test runner. Opt-in: package installs, net fetch, net
   search, sub-agents, local browsing via moli (the `browser` grant, default-off) with keyless-first search — see
-  [`docs/features/browsing.md`](docs/features/browsing.md) — the tabular lane (`tabular`, default-off), and the
-  semantic lane (`semantic`, default-off — see [`docs/features/semantic-lane.md`](docs/features/semantic-lane.md)). A missing
-  grant refuses by name — `capability not granted in this run: net-search` — and the run continues without it.
+  [`docs/features/browsing.md`](docs/features/browsing.md) — the tabular lane (`tabular`, default-off), the
+  semantic lane (`semantic`, default-off — see [`docs/features/semantic-lane.md`](docs/features/semantic-lane.md)),
+  and the diagram lane (`diagram`, default-off — see [`docs/features/diagram-lane.md`](docs/features/diagram-lane.md)).
+  A missing grant refuses by name — `capability not granted in this run: net-search` — and the run continues without it.
 - **The journal is the record.** `run.jsonl` holds phases, agent and tool calls, escalations and answers, commands with
   their costs, checkpoints, and the closing `run-done` / `run-failed`. `summary.json` is the run's answer.
 - **Escalation has a ranked ladder.** Declared answers, then the live `answers.jsonl`, then a question-substring match,
@@ -286,10 +293,18 @@ of globals: `args, agent, log, phase, report, escalate, artifact, files, git, wo
   — the swarm gate's one tabular read is a cached CSV parse. Absent CLI (`dev-decisions` not installed), absent sdm1 key
   (`TABPFN_API_KEY`), or an empty table → the loop reports its absence and proceeds exactly as today. See
   [`docs/features/tabular-decisions.md`](docs/features/tabular-decisions.md).
+- **Diagram maintenance is batch, granted, and fail-open.** `world.diagram.audit|repin|finalize` keeps the archify
+  diagrams (`docs/architecture/`) anchored: the audit compares each source ref's pinned line range against the pinned
+  revision by byte-identity (one `git show` per distinct revision+path — it writes nothing, so `kit doctor` runs it),
+  the re-pin applies the ones that purely moved and repins the revision (idempotently), and the finalize drives the
+  archify CLI — allowlisted to the one verb it speaks, absence is a refusal by name, receipts moved back beside the
+  candidate — into a fresh `refresh-<n>/`. The loop reports every ref whose content was *edited* as the agent's repair
+  list; it never authors a claim and never accepts a still. See
+  [`docs/features/diagram-lane.md`](docs/features/diagram-lane.md).
 
-### The workflow inventory (39 files, fifteen loops)
+### The workflow inventory (40 files, sixteen loops)
 
-**Loops — 13 files carrying fifteen loops.** Seven library shapes, six tabular, two semantic; `review-sweep`,
+**Loops — 14 files carrying sixteen loops.** Seven library shapes, six tabular, two semantic, one diagram; `review-sweep`,
 `triage`, and `watchdog` each carry two (a loop plus its tabular/semantic head).
 
 | workflow | loops | what it is |
@@ -307,6 +322,7 @@ of globals: `args, agent, log, phase, report, escalate, artifact, files, git, wo
 | `review-sweep` | tabular + semantic heads | Confirmed-findings review; carries the risk-prior annotations and the semantic dedup head. |
 | `dupe-watch` | semantic | Near-dupe pairs over the calibration store; divergent grades escalate, nothing writes. |
 | `render-watch` | semantic | Pixel shadow: unchanged re-renders counted as would-skip; the baseline flip is owner-held. |
+| `diagram-refresh` | diagram | Keeps the archify diagrams anchored: byte-identity drift audit, re-pin of moved refs, finalize, stills render. Authors nothing. |
 
 **One-pass workflows — 9.**
 

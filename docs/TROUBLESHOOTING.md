@@ -121,3 +121,47 @@ The dev-decisions embeddings lane (2026-10-07): vector index, near-dupe pairs, n
   close without their inputs being similar. Every pair is a lead to confirm,
   never a fact, and nothing merges without an owner. Remediation: none —
   dispute the pair; the report is the record.
+
+## Diagram lane / world.diagram
+
+The archify diagram refresh (2026-10-08): drift audit, ref re-pin, finalize, stills behind the `diagram` grant,
+default-off ([`docs/features/diagram-lane.md`](features/diagram-lane.md)).
+
+- **diagram-refresh says refs moved, or says a ref changed.** Two verdicts, two
+  jobs. *Moved* means the anchored bytes are identical somewhere else in the
+  file — the wave shifted lines around them; the loop re-pins these itself and
+  the next audit says intact. *Changed* means the bytes at the pinned range were
+  edited — the claim the node makes may no longer be true, and the loop refuses
+  to touch it by design: the report lists it with its label and old range as the
+  agent's repair list. Remediation: for a changed ref, grep the label's anchor in
+  the current file (the label is the hint; the old lines are only a
+  neighborhood), read the range, then decide — update the candidate's ref, or
+  edit the node's text, or delete the node — and re-run the loop to finalize.
+  Nothing here is automatic because "the lines moved" and "the claim died" are
+  different facts and only the second one is an author's problem.
+- **The loop says the archify CLI was not found.** The pinned refusal —
+  "archify CLI not found — the diagram grant needs the archify skill (set
+  ARCHIFY_BIN=/path/to/archify.mjs; see docs)". The CLI is resolved in a pinned
+  order: `ARCHIFY_BIN`, `~/.zcode/skills/archify/bin/archify.mjs`,
+  `~/.agents/skills/archify/bin/archify.mjs`. Remediation: install the skill or
+  point `ARCHIFY_BIN` at its `bin/archify.mjs`. Fail-open by design: the re-pin
+  still landed (the audit and re-pin need only git), the finalize phase declined
+  by name, and nothing half-wrote.
+- **finalize rejects the candidate (layout gate).** The two known rejections:
+  a sublabel long enough to make the layout gate's legibility minimum fail
+  (shorten the text rather than widen the node), and a new node placed at a
+  guessed position overlapping a neighbor (the gate's 8px-overlap rule — its
+  error names both boxes; move the new node beside its intended sibling and
+  re-finalize). Also: `finalize architecture` on a workflow-type candidate fails
+  with a misleading "lanes" schema error — read `diagram_type` from the
+  candidate and pass that type. Remediation: one repair round per failure, then
+  re-run the loop; a `--out-dir` must be fresh every round because the existing
+  HTML owns its browser-evidence path (the loop does this itself — by hand, use
+  `refresh-<n>` with n one past the max existing).
+- **The stills are byte-identical to last wave.** Expected, not a failure: a
+  label-only or links-only edit leaves the layout, and therefore the render,
+  unchanged — that is success reported honestly. Remediation: none; confirm the
+  PNG dimensions with `node docs/architecture/render-png.mjs --check` and move
+  on. If a *content* edit still renders identical bytes, the HTML and the still
+  disagree — re-run render and, if they still agree, read the PNG: the eye pass
+  is the acceptance gate, never a hash.

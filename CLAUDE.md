@@ -32,13 +32,12 @@ nothing skipped), review-sweep dedup head (repeats annotated, never dropped),
 router-eval neighbor annotations, semroute-shadow (fire-and-forget router logger,
 nothing reads its return) — see docs/plans/2026-10-07-semantic-loops.md and
 docs/features/semantic-lane.md.
-2026-10-07 semantic wave: `world.semantic` (dev-decisions embeddings lane, `semantic`
-grant default-off, batch-only, `--json` injected; verbs semantic-index/dedup/nn) + the
-shadow law — dupe-watch (report-only calibration dedup), render-watch (pixel shadow,
-nothing skipped), review-sweep dedup head (repeats annotated, never dropped),
-router-eval neighbor annotations, semroute-shadow (fire-and-forget router logger,
-nothing reads its return) — see docs/plans/2026-10-07-semantic-loops.md and
-docs/features/semantic-lane.md.
+2026-10-08 diagram lane wave: `world.diagram` (audit/repin/finalize, `diagram`
+grant default-off) + diagram-refresh — the archify diagrams' source refs audited by
+byte-identity against `meta.repository.revision` (moved refs re-pinned purely,
+`changed` refs escalated to the agent), the CLI resolved via ARCHIFY_BIN and the
+skill locations with a pinned refusal when absent — see
+docs/plans/2026-10-08-diagram-refresh.md and docs/features/diagram-lane.md.
 # agnostic-router-kit — house rules
 
 This repo is the harness-agnostic edition: the router and roster are neutral
