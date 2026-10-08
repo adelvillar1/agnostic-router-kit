@@ -440,6 +440,22 @@ const EXIT_STUB = stub(
     `process.exit(3);`,
   ].join("\n"),
 );
+// The real CLI's other failure face: under --json it leaves stderr empty and
+// puts the refusal on stdout as {ok:false, status:"fail", failedStage,
+// diagnostics:[{code,message}]} — a schema cap reads exactly like this.
+const JSON_FAIL_STUB = stub(
+  "archify-jsonfail",
+  [
+    `const fs = require("node:fs"); const path = require("node:path");`,
+    `const argv = process.argv.slice(2); const outDir = argv[argv.indexOf("--out-dir") + 1];`,
+    `fs.mkdirSync(outDir, { recursive: true });`,
+    `process.stdout.write(JSON.stringify({`,
+    `  ok: false, command: "finalize", status: "fail", failedStage: "validate",`,
+    `  diagnostics: [{ code: "schema/maxItems", message: "/components/12/sources must NOT have more than 3 items" }],`,
+    `}) + "\\n");`,
+    `process.exit(1);`,
+  ].join("\n"),
+);
 const SLOW_STUB = stub("archify-slow", `const fs = require("node:fs"); setTimeout(() => { fs.appendFileSync("/tmp/never", "late"); process.exit(0); }, 30_000);`);
 
 await check("finalize: the allowlist speaks finalize and refuses every other verb before spawn", async () => {
@@ -504,6 +520,14 @@ await check("finalize: a non-zero exit carries the stderr tail and moves nothing
   const r = await withEnv({ ARCHIFY_BIN: EXIT_STUB }, () => diagramFinalize({ type: "architecture", candidate: finCandidate, outDir }));
   assert.equal(r.ok, false);
   assert.match(r.reason, /^archify finalize failed \(exit 3\): finalize gate rejected: 8px overlap at component c1\/mysql/);
+  assert.equal(fs.existsSync(path.join(outDir, "fin.finalize.json")), false, "a failed round moves no receipt back");
+});
+
+await check("finalize: a --json refusal on stdout is not an empty reason", async () => {
+  const outDir = path.join(finRepo, "refresh-3");
+  const r = await withEnv({ ARCHIFY_BIN: JSON_FAIL_STUB }, () => diagramFinalize({ type: "architecture", candidate: finCandidate, outDir }));
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /^archify finalize failed \(exit 1\): validate refused: \/components\/12\/sources must NOT have more than 3 items/);
   assert.equal(fs.existsSync(path.join(outDir, "fin.finalize.json")), false, "a failed round moves no receipt back");
 });
 
