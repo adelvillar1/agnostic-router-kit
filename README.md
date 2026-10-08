@@ -293,6 +293,15 @@ of globals: `args, agent, log, phase, report, escalate, artifact, files, git, wo
   — the swarm gate's one tabular read is a cached CSV parse. Absent CLI (`dev-decisions` not installed), absent sdm1 key
   (`TABPFN_API_KEY`), or an empty table → the loop reports its absence and proceeds exactly as today. See
   [`docs/features/tabular-decisions.md`](docs/features/tabular-decisions.md).
+- **Media renders are generated, gated, and advisory.** `world.media(command, args)` execs the dev-decisions CLI's
+  gen1 lane — text spoken to audio, a render transcribed and graded against the script that produced it, ASR
+  calibrated against pinned fixtures, image renders, and the audio-seconds spend forecast — with `--json` injected on
+  every call and the bridge reporting transport while each row carries its own verdict. Batch-only by law, like the
+  lane before it: loops call it between rounds, never inside an ask. dev-decisions is the gate — this surface speaks
+  its verbs and never a provider's API — every render is eval-only, and a media-gate verdict is advisory and never a
+  block. Absent CLI (*"dev-decisions not installed — the media grant needs the dev-decisions CLI with gen1"*), a
+  missing key (named by variable), or a thin table → the loop names the absence and proceeds exactly as today. See
+  [`docs/features/media-lane.md`](docs/features/media-lane.md).
 - **Diagram maintenance is batch, granted, and fail-open.** `world.diagram.audit|repin|finalize` keeps the archify
   diagrams (`docs/architecture/`) anchored: the audit compares each source ref's pinned line range against the pinned
   revision by byte-identity (one `git show` per distinct revision+path — it writes nothing, so `kit doctor` runs it),
@@ -302,10 +311,10 @@ of globals: `args, agent, log, phase, report, escalate, artifact, files, git, wo
   list; it never authors a claim and never accepts a still. See
   [`docs/features/diagram-lane.md`](docs/features/diagram-lane.md).
 
-### The workflow inventory (40 files, sixteen loops)
+### The workflow inventory (43 files, nineteen loops)
 
-**Loops — 14 files carrying sixteen loops.** Seven library shapes, six tabular, two semantic, one diagram; `review-sweep`,
-`triage`, and `watchdog` each carry two (a loop plus its tabular/semantic head).
+**Loops — 17 files carrying nineteen loops.** Seven library shapes, six tabular, two semantic, three media, one diagram;
+`review-sweep`, `triage`, and `watchdog` each carry two (a loop plus its tabular/semantic head).
 
 | workflow | loops | what it is |
 |---|---|---|
@@ -323,6 +332,9 @@ of globals: `args, agent, log, phase, report, escalate, artifact, files, git, wo
 | `dupe-watch` | semantic | Near-dupe pairs over the calibration store; divergent grades escalate, nothing writes. |
 | `render-watch` | semantic | Pixel shadow: unchanged re-renders counted as would-skip; the baseline flip is owner-held. |
 | `diagram-refresh` | diagram | Keeps the archify diagrams anchored: byte-identity drift audit, re-pin of moved refs, finalize, stills render. Authors nothing. |
+| `asr-calibrate` | media | The pinned ASR fixture graded per provider leg; the lane's promotion evidence. |
+| `media-budget-watch` | media | Audio-seconds forecast against a named budget; a crossing escalates, a thin table degrades by name. |
+| `narrate` | media | Render a script to voice and verify it against the script; advisory, never a block. |
 
 **One-pass workflows — 9.**
 
@@ -330,7 +342,7 @@ of globals: `args, agent, log, phase, report, escalate, artifact, files, git, wo
 |---|---|
 | `adversarial-solve` | Competing champions build independent solutions; a judge merges the best. |
 | `bug-hunt` | Detectives list plausible causes; testers try to prove each one wrong. |
-| `content-production` | Outliner, section writers, and a fact-checker produce document content from a brief. |
+| `content-production` | Outliner, section writers, and a fact-checker produce document content from a brief; with the media grant the finished piece also gains a voice track. |
 | `coverage-push` | Gap finders and test writers chain per area; the suite decides what lands. |
 | `decision-memo` | Advocates argue each option's strongest honest case; a judge weighs and recommends. |
 | `deep-dive` | Explorers cover subsystems in parallel; a writer integrates and flags risks. |

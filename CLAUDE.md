@@ -38,6 +38,21 @@ byte-identity against `meta.repository.revision` (moved refs re-pinned purely,
 `changed` refs escalated to the agent), the CLI resolved via ARCHIFY_BIN and the
 skill locations with a pinned refusal when absent — see
 docs/plans/2026-10-08-diagram-refresh.md and docs/features/diagram-lane.md.
+2026-10-08 media lane wave: `world.media` (dev-decisions gen1 lane, `media`
+grant default-off, batch-only, `--json` injected; verbs media-speak/media-gate/
+media-transcribe/media-imagine/record-asr/record-media-runs/media-budget) + the
+advisory law — dev-decisions is the gate, every render is eval-only, and a
+media-gate verdict never blocks. Three loops: asr-calibrate (the pinned ASR
+fixture graded per provider leg — the lane's only gradeable verb and its
+promotion evidence), media-budget-watch (the daily `npm run record:media`
+cadence + the audio-seconds forecast; a thin table degrades by name), narrate
+(render a script to voice and gate it against the script) — plus
+content-production's optional voice leg (grant absent, or any refusal, and the
+result is byte-identical to today's workflow). The bridge reports transport and
+each row carries its own outcome; the CLI runs in the run's workspace because
+the lane's paths are workspace-relative (the `558bdd7` cwd fix, found by a live
+run a stub CLI could not catch) — see docs/plans/2026-10-08-media-loops.md and
+docs/features/media-lane.md.
 # agnostic-router-kit — house rules
 
 This repo is the harness-agnostic edition: the router and roster are neutral

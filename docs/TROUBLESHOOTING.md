@@ -122,6 +122,62 @@ The dev-decisions embeddings lane (2026-10-07): vector index, near-dupe pairs, n
   never a fact, and nothing merges without an owner. Remediation: none —
   dispute the pair; the report is the record.
 
+## Media / world.media
+
+The dev-decisions gen1 lane (2026-10-08): text spoken to audio, a render transcribed and graded against its script,
+ASR calibrated against pinned fixtures, image renders, and the audio-seconds forecast behind the `media` grant,
+default-off ([`docs/features/media-lane.md`](features/media-lane.md)).
+
+- **A media loop says "dev-decisions not installed".** The pinned absence
+  sentence — *"dev-decisions not installed — the media grant needs the
+  dev-decisions CLI with gen1 (see docs)"* — is an ENOENT on the spawn, not a
+  throw, so the run proceeds and the leg reports its absence in its own words.
+  Remediation: install the CLI or point `DEV_DECISIONS_BIN` at it. `kit doctor`
+  shows the row dim when the CLI is absent and green when it answers.
+- **A media verb failed (exit 3).** Exit 3 with a row on stdout is a *pre-row
+  refusal*: the CLI named why before it logged anything, and the row's `error`
+  is the sentence the loop reports. A missing key says so by variable name
+  (`DASHSCOPE_API_KEY` for the Qwen/Wan legs, `STEPFUN_API_KEY` for StepFun,
+  Kokoro needs none) — this machine keeps `STEPFUN_API_KEY` in
+  `~/.hermes/.env` and both keys in `~/Projects/design-canvas/.env.local`,
+  injected process-locally, never committed. gen1 resolves its keys from
+  `os.environ` first, then `~/.config/gen1/env` (chmod 600). Remediation: set
+  the named variable and re-run; the key value never appears in a row, a log,
+  or `kit doctor`.
+- **A staged script reads back as unreadable.** The media CLI runs with the
+  run's workspace as its cwd, because the lane's paths are workspace-relative —
+  so a leg that stages a file and then calls a verb on it works. If you see
+  `cannot read --text-file` (or `--script`/`--audio`) against a file you know
+  is on disk, the cwd is wrong: check that the call is going through
+  `world.media` and not a hand-rolled `execFile`, and that the path is
+  workspace-relative rather than machine-absolute.
+- **media-gate's verdict is `gaps`.** Advisory by the lane's law, and the loop
+  does not block on it — the deliverable stands exactly as its author wrote it.
+  The row's per-line `missing`/`extra` token counts name the drift; the note
+  says how many lines were verified, refused, and gapped. Remediation:
+  re-render the line (a different voice or a slower `--speed` often closes a
+  gap the ASR split) or accept it by hand. Remember the verdict rides an
+  *uncalibrated* ASR until `record-asr` earns floors, so a low agreement is a
+  prompt to look, not a defect.
+- **The render's format disagrees with its filename.** Every gen1 provider
+  serves its own container and ignores the requested one — qwen answers mp3,
+  StepFun and Kokoro answer wav. A `.mp3` filename holding a wav is not
+  corruption: the row's `format` is the container truth, the gate reads the
+  file by content, and the loop names the disagreement rather than hiding it.
+  Remediation: none — read the row's format, or rename to match.
+- **media-budget says degraded.** Fewer than four recorded days of history —
+  the forecast needs four to render bands, so it names the reason per provider
+  (*"only 1 recorded day(s) — forecast needs 4"*) and escalates nothing. The
+  table `~/.local/share/dev-decisions/tables/media_runs.csv` grows only when
+  the cadence runs: `npm run record:media`. Remediation: run the daily cadence
+  and the next forecast has its floors.
+- **record-asr reports no graded rows.** Every fixture refused, which means the
+  ASR leg could not run — almost always a missing key (the refusal names it) or
+  an unreadable fixture pair. `record-asr` is the lane's only gradeable verb,
+  so a run with no graded rows leaves every media-gate verdict uncalibrated.
+  Remediation: set the named key and re-run; the pinned fixture lives in
+  dev-decisions' `scripts/fixtures/media/`.
+
 ## Diagram lane / world.diagram
 
 The archify diagram refresh (2026-10-08): drift audit, ref re-pin, finalize, stills behind the `diagram` grant,
