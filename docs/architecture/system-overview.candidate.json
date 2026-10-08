@@ -12,7 +12,7 @@
       "url": "git@github.com:adelvillar1/agnostic-router-kit.git",
       "provider": "github",
       "link_mode": "local-only",
-      "revision": "039172e58e97351508548209ab9c195204088440"
+      "revision": "399f3463c7e3fb6c55fbfed05c1f292bcd61c247"
     },
     "views": [
       {
@@ -232,8 +232,8 @@
       "sources": [
         {
           "path": "lib/workflow/services.mjs",
-          "line": 983,
-          "end_line": 1016,
+          "line": 1071,
+          "end_line": 1104,
           "label": "searchWeb"
         }
       ],
@@ -273,7 +273,7 @@
       "id": "devdec",
       "type": "external",
       "label": "dev-decisions · sdm1",
-      "sublabel": "calibration · tabular + semantic lanes",
+      "sublabel": "calibration · tabular + semantic + media lanes",
       "icon": "external",
       "sources": [
         {
@@ -287,6 +287,12 @@
           "line": 1,
           "end_line": 30,
           "label": "quota-forecast loop"
+        },
+        {
+          "path": "lib/workflow/services.mjs",
+          "line": 361,
+          "end_line": 369,
+          "label": "media verbs"
         }
       ],
       "pos": [
@@ -307,8 +313,8 @@
       "sources": [
         {
           "path": "lib/workflow/services.mjs",
-          "line": 317,
-          "end_line": 354,
+          "line": 306,
+          "end_line": 332,
           "label": "semantic"
         },
         {
@@ -341,14 +347,14 @@
       "sources": [
         {
           "path": "lib/workflow/services.mjs",
-          "line": 540,
-          "end_line": 801,
+          "line": 628,
+          "end_line": 889,
           "label": "audit · repin · finalize"
         },
         {
           "path": "lib/cli.mjs",
-          "line": 592,
-          "end_line": 599,
+          "line": 609,
+          "end_line": 616,
           "label": "doctor: freshness row"
         },
         {
@@ -529,9 +535,9 @@
       "sources": [
         {
           "path": "lib/workflow/services.mjs",
-          "line": 907,
+          "line": 995,
           "label": "duckduckgo · firecrawl",
-          "end_line": 907
+          "end_line": 995
         }
       ],
       "pos": [
@@ -625,6 +631,41 @@
       "size": [
         200,
         72
+      ]
+    },
+    {
+      "id": "gen1",
+      "type": "external",
+      "label": "gen1 · media",
+      "sublabel": "Qwen · StepFun · Kokoro",
+      "icon": "external",
+      "sources": [
+        {
+          "path": "lib/workflow/services.mjs",
+          "line": 351,
+          "end_line": 441,
+          "label": "media bridge · transport/outcome"
+        },
+        {
+          "path": "lib/workflow/engine.mjs",
+          "line": 525,
+          "end_line": 554,
+          "label": "world.media · grant + journal"
+        },
+        {
+          "path": "workflows/narrate.ts",
+          "line": 209,
+          "end_line": 238,
+          "label": "render leg: speak each line"
+        }
+      ],
+      "pos": [
+        270,
+        530
+      ],
+      "size": [
+        200,
+        64
       ]
     }
   ],
@@ -829,6 +870,13 @@
       "from": "judge",
       "to": "sem1",
       "label": "sem1_raw rows",
+      "variant": "dashed"
+    },
+    {
+      "id": "devdec-gen1",
+      "from": "devdec",
+      "to": "gen1",
+      "label": "renders + verdicts",
       "variant": "dashed"
     }
   ],
