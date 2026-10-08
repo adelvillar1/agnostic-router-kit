@@ -90,6 +90,12 @@ const REFUSAL_STUB = stub(
 );
 // A crash with nothing on stdout: the stderr slice is all there is.
 const CRASH_STUB = stub("crash", `console.error("gen1 not importable — set DEV_DECISIONS_GEN1_PATH"); process.exit(3);`);
+// The lane's paths are workspace-relative by the engine's own verb docs, so the
+// child has to be able to report where it ran.
+const CWD_STUB = stub(
+  "cwd",
+  `process.stdout.write(JSON.stringify({ op: "media-gate", ok: true, verdict: "pass", cwd: process.cwd() }) + "\\n");`
+);
 
 async function withBin(bin, body) {
   const real = process.env.DEV_DECISIONS_BIN;
@@ -173,9 +179,20 @@ await check("media: the other lanes' verbs stay out of the surface", async () =>
   }
 });
 await check("media: a non-object args is refused before any process runs", async () => {
-  const r = await withBin(ECHO_STUB, () => media("media-gate", "s.txt", {}));
+  const r = await withBin(ECHO_STUB, () => media("media-gate", "nope", {}));
   assert.equal(r.ok, false);
-  assert.equal(r.reason, "media args must be an object of CLI flags");
+  assert.match(r.reason, /media args must be an object/);
+});
+await check("media: a passed cwd is the child's cwd, so workspace-relative paths resolve", async () => {
+  const r = await withBin(CWD_STUB, () => media("media-gate", { script: "out/content/voice-script.txt" }, { cwd: "/tmp" }));
+  assert.equal(r.ok, true, `refused: ${r.reason}`);
+  // macOS resolves /tmp to /private/tmp, so the child reports the real path.
+  assert.equal(r.rows[0].cwd, fs.realpathSync("/tmp"), "the child did not run in the cwd it was handed");
+});
+await check("media: no cwd leaves the child in this process's cwd (the tabular/semantic default)", async () => {
+  const r = await withBin(CWD_STUB, () => media("media-gate", { script: "s.txt" }, {}));
+  assert.equal(r.ok, true, `refused: ${r.reason}`);
+  assert.equal(r.rows[0].cwd, process.cwd());
 });
 await check("media: a child past its timeout is killed, and the refusal names the ms", async () => {
   const t0 = Date.now();

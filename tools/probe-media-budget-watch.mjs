@@ -188,7 +188,9 @@ async function drive(runArgs) {
     world: {
       // The kit's own bridge, so the advisory-exit and stdout-refusal handling
       // under test here is the one a real run exercises.
-      media: (command, callArgs, callOpts) => media(command, callArgs, callOpts),
+      // The engine's binding: the lane's paths resolve against the run's
+      // workdir, so the CLI runs there.
+      media: (command, callArgs, callOpts) => media(command, callArgs, { ...callOpts, cwd: yard }),
     },
   };
   const keys = Object.keys(api);

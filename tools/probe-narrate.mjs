@@ -238,7 +238,9 @@ async function drive(runArgs) {
     world: {
       // The kit's own bridge, so the advisory-exit and stdout-refusal handling
       // under test here is the one a real run exercises.
-      media: (command, callArgs, callOpts) => media(command, callArgs, callOpts),
+      // The engine's binding, cwd included: the lane's paths are
+      // workspace-relative, so the CLI runs in the run's workspace.
+      media: (command, callArgs, callOpts) => media(command, callArgs, { ...callOpts, cwd: workspace }),
       // The kit's own worldRun into the temp workspace, so the seam files are
       // written for real and read back off disk.
       run: (command, args) => worldRun(command, args, workspace, grants, () => {}),
