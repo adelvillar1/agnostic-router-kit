@@ -18,6 +18,7 @@
   "scripts": {
     "kit": "node bin/agnostic-router-kit.mjs",
     "test": "node tools/run-probes.mjs",
-    "record:quota": "node tools/record-quota-table.mjs"
+    "record:quota": "node tools/record-quota-table.mjs",
+    "record:media": "node tools/record-media-telemetry.mjs"
   }
 }
