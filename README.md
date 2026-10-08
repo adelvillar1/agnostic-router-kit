@@ -73,7 +73,7 @@ below are light-theme renders; the interactive versions carry the file and line 
 - **The run API.** `POST /v1/runs` starts a run for an app token, `POST /v1/runs/<id>/answers` answers its escalations
   live, `GET /v1/runs/<id>/artifacts` reads what it produced. Ownership is re-derived from the journal, so a restart
   never reopens the door.
-- **A loop library.** Sixteen loops over the plane, in four lanes, plus the one-pass workflows they were built
+- **A loop library.** Nineteen loops over the plane, in four lanes, plus the one-pass workflows they were built
   from. Seven loop shapes anchor the library — deep-research, remediate, triage, refine-loop, red-team, watchdog,
   router-eval. Six tabular loops ride the dev-decisions
   lane: quota-forecast (per-plan exhaustion bands, an in-band crossing escalates), flake-watch (known-flaky suites
@@ -98,6 +98,15 @@ below are light-theme renders; the interactive versions carry the file and line 
   moved, finalizes through the archify CLI, and renders the stills. The loop
   anchors claims; authoring them stays with the agent, and the stills stay read
   by a human. See [`docs/features/diagram-lane.md`](docs/features/diagram-lane.md).
+  The media lane (dev-decisions' fourth model class — gen1 generates what the
+  work needs heard and seen) adds asr-calibrate (the pinned ASR fixture graded
+  per provider leg — the lane's only gradeable verb and its promotion
+  evidence), media-budget-watch (audio-seconds forecast against a named
+  budget; a crossing escalates, a thin table degrades by name), and narrate
+  (render a script to voice and gate the render against the script — advisory,
+  never a block) — with content-production's voice leg a consumer of the lane
+  rather than a loop. Renders are eval-only and a media-gate verdict never
+  blocks. See [`docs/features/media-lane.md`](docs/features/media-lane.md).
 - **Dashboard.** The router serves its own dashboard at `/dashboard` — the usage ledger, provider enable/disable,
   quota status, the delegation and workflow assignment view, live run activity, and a Save & apply button that writes
   the roster and re-renders it in place.
