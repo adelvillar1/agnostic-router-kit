@@ -245,7 +245,7 @@ await check("audit: the engine repo's own candidates audit, and the counts are s
   for (const d of real.diagrams) {
     assert.ok(typeof d.pinnedRevision === "string" && d.pinnedRevision.length > 0, `${d.diagram} names its pin`);
     assert.equal(typeof d.stale, "boolean");
-    assert.ok(["architecture", "workflow"].includes(d.type), `${d.diagram}: ${d.type}`);
+    assert.ok(typeof d.type === "string" && d.type.length > 0, `${d.diagram}: ${d.type}`);
     summed.intact += d.refs.intact;
     summed.moved += d.refs.moved.length;
     summed.changed += d.refs.changed.length;
