@@ -12,7 +12,7 @@
       "url": "git@github.com:adelvillar1/agnostic-router-kit.git",
       "provider": "github",
       "link_mode": "local-only",
-      "revision": "be3659aa1af8f23b96731abf9942cb5c7c190e18"
+      "revision": "039172e58e97351508548209ab9c195204088440"
     }
   },
   "lanes": [
@@ -151,8 +151,8 @@
         },
         {
           "path": "lib/workflow/services.mjs",
-          "line": 581,
-          "end_line": 581,
+          "line": 1030,
+          "end_line": 1030,
           "label": "scrape endpoint"
         }
       ]

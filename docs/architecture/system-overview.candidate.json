@@ -12,7 +12,7 @@
       "url": "git@github.com:adelvillar1/agnostic-router-kit.git",
       "provider": "github",
       "link_mode": "local-only",
-      "revision": "be3659aa1af8f23b96731abf9942cb5c7c190e18"
+      "revision": "039172e58e97351508548209ab9c195204088440"
     },
     "views": [
       {
@@ -232,8 +232,8 @@
       "sources": [
         {
           "path": "lib/workflow/services.mjs",
-          "line": 534,
-          "end_line": 567,
+          "line": 983,
+          "end_line": 1016,
           "label": "searchWeb"
         }
       ],
@@ -255,8 +255,8 @@
       "sources": [
         {
           "path": "lib/cli.mjs",
-          "line": 219,
-          "end_line": 234,
+          "line": 220,
+          "end_line": 235,
           "label": "sys1Health"
         }
       ],
@@ -278,8 +278,9 @@
       "sources": [
         {
           "path": "lib/workflow/services.mjs",
-          "line": 250,
-          "label": "tabular"
+          "line": 251,
+          "label": "tabular",
+          "end_line": 251
         },
         {
           "path": "workflows/quota-forecast.ts",
@@ -306,8 +307,8 @@
       "sources": [
         {
           "path": "lib/workflow/services.mjs",
-          "line": 316,
-          "end_line": 353,
+          "line": 317,
+          "end_line": 354,
           "label": "semantic"
         },
         {
@@ -326,6 +327,40 @@
       "pos": [
         520,
         436
+      ],
+      "size": [
+        200,
+        64
+      ]
+    },
+    {
+      "id": "diagramlane",
+      "type": "backend",
+      "label": "Diagram lane",
+      "sublabel": "archify diagrams kept anchored",
+      "sources": [
+        {
+          "path": "lib/workflow/services.mjs",
+          "line": 540,
+          "end_line": 801,
+          "label": "audit · repin · finalize"
+        },
+        {
+          "path": "lib/cli.mjs",
+          "line": 592,
+          "end_line": 599,
+          "label": "doctor: freshness row"
+        },
+        {
+          "path": "workflows/diagram-refresh.ts",
+          "line": 66,
+          "end_line": 75,
+          "label": "the loop"
+        }
+      ],
+      "pos": [
+        520,
+        510
       ],
       "size": [
         200,
@@ -427,8 +462,8 @@
       "sources": [
         {
           "path": "lib/cli.mjs",
-          "line": 178,
-          "end_line": 455,
+          "line": 179,
+          "end_line": 456,
           "label": "quickstart … cmdApply"
         }
       ],
@@ -494,8 +529,9 @@
       "sources": [
         {
           "path": "lib/workflow/services.mjs",
-          "line": 458,
-          "label": "duckduckgo · firecrawl"
+          "line": 907,
+          "label": "duckduckgo · firecrawl",
+          "end_line": 907
         }
       ],
       "pos": [
