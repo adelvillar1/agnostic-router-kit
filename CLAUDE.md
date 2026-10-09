@@ -53,6 +53,20 @@ each row carries its own outcome; the CLI runs in the run's workspace because
 the lane's paths are workspace-relative (the `558bdd7` cwd fix, found by a live
 run a stub CLI could not catch) — see docs/plans/2026-10-08-media-loops.md and
 docs/features/media-lane.md.
+2026-10-08 media port, applied: the kit's ported loops resolve by name and the
+engine's run surface is per-run. `parseHeader`/`hasHeader` accept the marker
+with or without the `zcode-` prefix — a kit file's declared args used to read
+as an empty declaration, so every argument an operator passed was refused. The
+router's `findWorkflowFile` and `kit workflows run` now resolve
+`<name>.dwf.ts`. And `runWorkflow` hands its API surface to the workflow module
+as the wrapper's single argument instead of binding every key onto
+`globalThis`: the router's run API spawns runs concurrently, and two runs alive
+in one process resolved each other's `world`, its grants and its journal — a
+media-budget-watch run holding the media grant was refused with "capability not
+granted in this run: media" by an asr-calibrate run started 31ms later with no
+grants at all. tools/probe-concurrent-runs.mjs drives the real `runWorkflow`
+with two runs started ~15ms apart and asserts each run's identity, grants and
+journal are its own — see docs/plans/2026-10-08-media-loops.md.
 # agnostic-router-kit — house rules
 
 This repo is the harness-agnostic edition: the router and roster are neutral

@@ -5,9 +5,9 @@
  * The loop's promise: ingest, forecast, report — and escalate a crossing and
  * nothing else. Proven here two ways.
  *
- * Hermetically, by driving the REAL workflow body — the same text transform
- * the plane applies (`annotateAskSites`, the surface bound as globals,
- * `export default async function`) — over stub CLIs answering in the lane's
+ * Hermetically, by driving the REAL workflow body — the plane's own
+ * `annotateAskSites` transform, the surface bound as globals by this probe,
+ * `export default async function` — over stub CLIs answering in the lane's
  * pinned machine rows: the ingest-then-forecast order, the per-provider band
  * table, the degraded providers named with the engine's own reasons, the
  * scope view filter (which never recomputes the estimate), exactly one

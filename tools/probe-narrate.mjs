@@ -5,9 +5,9 @@
  * The loop's promise: render narration through the media lane, assemble the
  * hyperframes seam from the engine's own accountable rows, and gate the result
  * against the script — advisory, never blocking. Proven here by driving the
- * REAL workflow body (the same text transform the plane applies —
- * `annotateAskSites`, the surface bound as globals, `export default async
- * function`) over stub CLIs answering in the lane's pinned machine rows, with
+ * REAL workflow body (the plane's own `annotateAskSites` transform, the
+ * surface bound as globals by this probe, `export default async function`)
+ * over stub CLIs answering in the lane's pinned machine rows, with
  * the plane-side writes going through the kit's own `worldRun` into a real
  * temp workspace so the seam files are read back off disk rather than trusted:
  *

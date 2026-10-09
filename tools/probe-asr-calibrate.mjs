@@ -4,9 +4,9 @@
  *
  * The loop's promise: it turns the pinned fixture's per-leg grades into
  * promotion evidence and writes nothing. Proven here by driving the REAL
- * workflow body — the same text transform the plane applies
- * (`annotateAskSites`, the surface bound as globals, `export default async
- * function`) — over the kit's own `media()` bridge pointed at stub CLIs that
+ * workflow body — the plane's own `annotateAskSites` transform, the surface
+ * bound as globals by this probe, `export default async function` — over the
+ * kit's own `media()` bridge pointed at stub CLIs that
  * answer in the lane's pinned machine rows:
  *
  *   1. planted per-provider rows (one leg clearing the floor, one short on

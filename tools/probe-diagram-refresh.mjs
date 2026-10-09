@@ -187,7 +187,13 @@ fs.writeFileSync(modulePath, moduleText);
 const mod = await import(new URL(`file://${modulePath}`).href);
 const grants = resolveGrants({ grants: "diagram,process", allowCommands: "node" });
 
-/** Bind the run surface as globals — the engine's own line — and call the loop. */
+/**
+ * Bind the run surface as globals and call the loop. The engine itself no longer
+ * binds globals — it passes its surface into the module as an argument so two
+ * runs alive in one process cannot resolve each other's (see
+ * probe-concurrent-runs.mjs). This probe drives the loop's free names the
+ * simpler way, which is enough to exercise the loop's own logic.
+ */
 async function drive(runArgs, { archifyBin }) {
   const collected = { logs: [], phases: [], reports: [], artifacts: [] };
   const prevArchify = process.env.ARCHIFY_BIN;
