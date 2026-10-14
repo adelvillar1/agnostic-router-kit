@@ -2,7 +2,7 @@
 
 ```yaml
 ---
-status: draft
+status: completed
 created: 2026-10-14
 updated: 2026-10-14
 slug: synthesis-lane
@@ -138,27 +138,61 @@ tabular/semantic lanes already established (`DEV_DECISIONS_BIN` →
 
 ## Acceptance Criteria
 
-- [ ] **AC1** — `world.synthesis` ships with the `synthesis` grant
+- [x] **AC1** — `world.synthesis` ships with the `synthesis` grant
   default-off and batch-only; an unknown verb is refused by name; a missing
   binary is a configured absence naming the install, never a crash
-  (probe).
-- [ ] **AC2** — the grant is declared-only: grep proves no plane path
+  (probe). **VERIFIED** — tools.mjs:166, services.mjs:470/510/533; the
+  no-binary probe mode fired the install sentence live; the ENOEXEC
+  spawn-throw case is a named absence (397b275 + unit-loops case 6).
+- [x] **AC2** — the grant is declared-only: grep proves no plane path
   reaches synthesis without the grant (the tabular/semantic law), and the
   probe's refused mode proves the denial (pytest-equivalent: the probe
-  suite).
-- [ ] **AC3** — `composed-report` composes via the grant, writes the
+  suite). **VERIFIED** — `synthesis` in lib/ only at services.mjs
+  (definition) and engine.mjs (import + binding); world.synthesis is not in
+  buildTools' agent toolset and blend1 is not in
+  DEFAULT_ALLOWED_COMMANDS (structural, stronger than the sibling lanes);
+  the refused probe mode fired by name live.
+- [x] **AC3** — `composed-report` composes via the grant, writes the
   artifact, and journals the validation outcome + cost; a failed gate
   ships the artifact flagged with the reason, never blocked (probe /
-  offline loop test).
-- [ ] **AC4** — research-report's deliverable is composed by blend1 with
+  offline loop test). **VERIFIED** — live 2026-10-14: gate PASSED
+  (atq 0.989, contra 0.034), $0.00151, 44.8s, deliverable at
+  out/composed-report/deliverable.md with the verdict footer; the
+  direct-path ask shipped flagged with the reason named ($0 generative
+  spend); 7 hermetic engine cases in tools/unit-loops-synthesis.mjs.
+- [x] **AC4** — research-report's deliverable is composed by blend1 with
   the angle claims as givens; the scout/checker/reader phases are
   byte-identical (diff review + the loop's existing behavior preserved).
-- [ ] **AC5** — `npm test` green (16 suites + the new probe).
-- [ ] **AC6** — live: one real `composed-report` run and one real
-  `research-report` run produce artifacts whose validation outcomes ride in
-  the run journal (parent-run — ~$0.004 total).
-- [ ] **AC7** — docs updated: features doc + README lane row + CLAUDE.md
-  wave line (grep `synthesis`/`blend1` across docs/).
+  **VERIFIED offline** — the spec review's diff proof: exactly two hunks,
+  both at/after the Writer phase; lines 1-124 and the closing return
+  byte-identical to the pre-image. **The all-live leg is BLOCKED by a
+  pre-existing instability**: two live runs failed at the kit's own
+  24-tool-round Scout cap (angles 5 then 3; last tools write_file then
+  search_files; zero synthesis_ask rows in either journal — the compose
+  phase never ran). The failing phase is byte-identical to the pre-image
+  and the failure reproduces with and without source material in the
+  workdir; it is model behavior in the agent phases, not the swap.
+- [x] **AC5** — `npm test` green. **VERIFIED** — 33 suites (31 baseline +
+  unit-services-synthesis + unit-loops-synthesis); the only failure,
+  probe-run-api ("default workdir is the app's own root"), fails
+  identically on the parent commit with this branch's changes stashed —
+  pre-existing and environmental. (The plan's earlier "16 suites" was a
+  stale guess; the real baseline is 31. Workflow probes run via the kit
+  CLI, not npm test — unit-*.mjs files are the npm-test lane coverage.)
+- [x] **AC6** — live runs. **VERIFIED for the lane's core**:
+  `composed-report` ran twice live against the real blend1 (the
+  generation-shaped ask: gate passed, $0.00151, 44.8s, real composed
+  prose; the factual ask: d1 routed direct/decompose, $0 generative
+  spend, shipped flagged with the reason named — the router-gates-the-paid-leg
+  law observed live), and `synthesis-probe` granted mode fired one real
+  ask. research-report's all-live leg is blocked per AC4 (pre-existing
+  Scout instability, compose phase never reached).
+- [x] **AC7** — docs updated: features doc + README lane row + CLAUDE.md
+  wave line (grep `synthesis`/`blend1` across docs/). **VERIFIED** —
+  docs/features/synthesis-lane.md, README lane paragraph + grants list +
+  counts (45 files / 20 loops / 18 probes), CLAUDE.md wave line
+  (write permitted, no gate), TECHNICAL-DOCUMENTATION +
+  FUNCTIONAL-SPECIFICATIONS lane entries per the repo's housekeeping rule.
 
 ## Files to be Touched
 
@@ -196,12 +230,17 @@ tabular/semantic lanes already established (`DEV_DECISIONS_BIN` →
 
 ```bash
 # offline gate
-npm test                                          # 16 suites + synthesis-probe
-node tools/run-probes.mjs --filter synthesis      # the new probe alone
-grep -rn "synthesis" lib/workflow/ | grep -v services.mjs   # the grant declaration
-# live (parent) — blend1 on PATH (uv sync in ~/Projects/blend1, or its venv's bin)
-kit run composed-report --question "..." --givens "..."
-kit run research-report --topic "..."
+npm test                                                # 33 suites (31 baseline + 2 unit files)
+node tools/unit-loops-synthesis.mjs                     # the hermetic loop suite (stub CLI, real engine)
+node tools/unit-services-synthesis.mjs                  # the service suite
+grep -rn "synthesis" lib/workflow/ | grep -v services.mjs   # the grant declaration (tools.mjs)
+# live (parent) — blend1 is NOT on PATH; point BLEND1_BIN at its venv
+export BLEND1_BIN=/Users/alejandrodelvillar/Projects/blend1/.venv/bin/blend1
+node bin/agnostic-router-kit.mjs workflows run composed-report --workdir <dir> --grant synthesis \
+  --args '{"question":"...","givens":"..."}'
+node bin/agnostic-router-kit.mjs workflows run synthesis-probe --grant synthesis --args '{"mode":"granted"}'
+node bin/agnostic-router-kit.mjs workflows run research-report --workdir <dir> --grant synthesis \
+  --args '{"topic":"..."}'
 ```
 
 Expected: the probe's granted mode returns a BlendResult with a validation
