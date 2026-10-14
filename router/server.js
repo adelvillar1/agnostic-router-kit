@@ -962,6 +962,48 @@ async function attemptUpstream(res, body, signals, target, up, t0, attemptIndex,
       return { sent: true };
     }
     const text = await u.text();
+    // A 200 that carries no content is a billed call that answered nothing.
+    // The mixture path has refused exactly this since it was written ("a
+    // proposal that says nothing is not a proposal"); the single path used to
+    // pass it through, so an up-but-silent upstream — a blend whose lanes all
+    // failed open — would answer every request with "" forever, a 200 benching
+    // nothing and no cooldown ever breaking the loop. Empty content walks the
+    // chain like any other failed candidate: the spend is recorded, the
+    // provider is benched briefly (one empty answer is a symptom, not a
+    // verdict), and the next candidate answers.
+    if (u.status === 200) {
+      let said = null;
+      try {
+        said = JSON.parse(text)?.choices?.[0]?.message?.content;
+      } catch {}
+      if (typeof said !== "string" || said.trim().length === 0) {
+        markCooldown(target.providerId, 60_000, u.status);
+        log({
+          event: "route",
+          sessionKey: signals.sessionKey,
+          requested: signals.requestedModel,
+          workload: target.workload,
+          provider: target.providerId,
+          model: target.model,
+          status: u.status,
+          attempt: attemptIndex,
+          detail: "empty content — walked the chain (a billed call that answered nothing)",
+        });
+        usage.record({
+          providerId: target.providerId,
+          model: target.model,
+          workload: target.workload,
+          execution: target.execution ?? "single",
+          requested: signals.requestedModel,
+          reason: `${failover ? `failover:${attemptIndex}` : target.reason ?? "route"}+empty-content`,
+          status: u.status,
+          ms: Date.now() - t0,
+          stream: false,
+          trigger,
+        });
+        return { sent: false, status: u.status };
+      }
+    }
     let pt = null;
     let ct = null;
     try {

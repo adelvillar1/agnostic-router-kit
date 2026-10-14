@@ -261,9 +261,20 @@ of it. A gate that did not pass is still a `200` with the answer shipping flagge
 is an outage, so the tier's failover fires on a *down* blend, never on a flagged one.
 
 `apiKeyEnv` names `BLEND1_BEARER_TOKEN`, the service's own optional bearer: the roster requires a key name for every
-usable provider, and blend1's service is localhost-open while that variable is unset — set it in the runtime `.env`
-(`kit env set BLEND1_BEARER_TOKEN=…`) to require a token on the service *and* let the router present it. Until it
-resolves, `composed` renders onto its fallback chain, which is the degradation the plan intends.
+usable provider, and blend1's service is localhost-open while that variable is unset. The token lives in **two
+processes**, and the router can only present what it can read: `kit env set BLEND1_BEARER_TOKEN=…` writes the
+*router's* runtime `.env`, and the same value must be in the *service's* environment when uvicorn starts
+(`BLEND1_BEARER_TOKEN=… service/.venv/bin/uvicorn service.main:app --port 8420`). The two values must be **equal** —
+the router presents its runtime value, the service compares against its own. Set only the router's and the service
+stays localhost-open (the doc's "require a token" is then false); set only the service's and `composed` renders onto
+its fallback chain because the key never resolves for the router; set both to different values and the service 401s,
+which the router benches and fails over from — the degradation below, reached by following the docs. Until the value
+resolves for the router, `composed` renders onto its fallback chain, which is the degradation the plan intends.
+
+One more reliability rule the router enforces for this tier: a `200` that carries no content is a billed call that
+answered nothing — an up-but-silent blend (every lane failed open) would otherwise answer every request with `""`
+forever. The single path now treats empty content exactly as the mixture path always has: the spend is recorded, the
+provider is benched for a minute, and the chain walks to the fallback.
 
 ## How the router decides
 
@@ -278,7 +289,7 @@ One `POST /v1/chat/completions` with `model: "auto"`:
 4. **Execution**: a single call; or parallel proposers plus an integration judgment (mixture); or a delegate to a
    workflow in the library.
 5. **Tier chain walk**: quota-aware candidate order; parity first — a fallback that declares it lacks a capability the
-   request carries (images, tools) is excluded before steering. Upstream `402/403/408/429/5xx` or a connection failure
+   request carries (images, tools) is excluded before steering. Upstream `401/402/403/408/429/5xx` or a connection failure
    is classified (`router/failclass.mjs`: usage-limit vocabulary before the 429 pattern — a subscription cap is a quota,
    not a rate limit; quota/billing bodies are never a key fault; a model gap walks without benching), then moves to the
    next candidate and opens a bench per its class; roster cooldown overrides win first. A benched provider steers as

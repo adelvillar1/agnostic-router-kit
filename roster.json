@@ -155,6 +155,9 @@
     "code": {
       "workload": "standard_code"
     },
+    "composed": {
+      "workload": "composed"
+    },
     "hard": {
       "workload": "hard"
     },
