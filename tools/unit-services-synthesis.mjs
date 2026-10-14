@@ -245,7 +245,9 @@ await check("loops: research-report's composer swap keeps the reader and the ret
   assert.match(src, /GIVENS DATA BEGIN/, "the same givens framing rides");
   assert.match(src, /const reader = agent\("Reader"/, "the Reader phase is untouched");
   assert.match(src, /const scoper = agent\("Scoper"/, "the Scoper phase is untouched");
-  assert.match(src, /conclusion: `\$\{draft\.summary\} Report: \$\{draft\.path\}\.`/, "the return shape is unchanged");
+  assert.match(src, /conclusion: `\$\{draftSummary\} Report: \$\{draft\.path\}\.`/, "the return shape is unchanged — the summary tracks the composition that ships");
+  assert.match(src, /synthesisDemotion/, "a reader fix-up that demotes the gate outcome is named, never silent");
+  assert.match(src, /GIVENS DATA END \$\{GIVENS_NONCE\}/, "the closing marker carries the per-run nonce");
   assert.ok(!/writer\.ask/.test(src), "no Writer agent remains — the composition is the composer's");
 });
 await check("probe: synthesis-probe carries the three modes", () => {

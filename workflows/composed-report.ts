@@ -18,8 +18,8 @@ args:
     required: true
   givens:
     type: string
-    description: The only permissible facts, as free text — framed as data, never instructions.
-    required: true
+    description: The only permissible facts, as free text — framed as data, never instructions. Required unless givens_file supplies them.
+    required: false
   givens_file:
     type: string
     description: Optional workspace-relative path; when present it REPLACES the inline givens (read, capped at 8000 chars).
@@ -61,16 +61,27 @@ const DELIVERABLE = "out/composed-report/deliverable.md";
 // web text it fetched itself; the givens here are the CALLER's — a file, a
 // prior agent's output, an operator's paste — so the kit frames them as
 // data between explicit markers, the same discipline, extended one boundary
-// out. The instruction after the markers is the givens contract itself:
-// answer from the data, say so plainly when the data is not enough, never
-// invent a number.
-const GIVENS_BEGIN = "----- GIVENS DATA BEGIN -----";
-const GIVENS_END = "----- GIVENS DATA END -----";
+// out. The markers carry a PER-RUN NONCE: a fixed marker string is a known
+// string, and content that carries it (a fetched page quoting the kit's own
+// docs, a crafted file) could close the region early and land instructions
+// outside it at instruction trust level. A nonce cannot appear in any
+// pre-existing content, so the only escape left is the run's own markers.
+// The instruction after the markers is the givens contract itself: answer
+// from the data, say so plainly when the data is not enough, never invent a
+// number.
+const GIVENS_NONCE = Math.random().toString(36).slice(2, 10);
+const GIVENS_BEGIN = `----- GIVENS DATA BEGIN ${GIVENS_NONCE} -----`;
+const GIVENS_END = `----- GIVENS DATA END ${GIVENS_NONCE} -----`;
 
 const question = String(args.question ?? "").trim();
 const givensFile = String(args.givens_file ?? "").trim();
-let givens = String(args.givens ?? "").slice(0, GIVENS_CAP);
+const inlineGivens = String(args.givens ?? "");
+let givens = inlineGivens.slice(0, GIVENS_CAP);
 let givensFrom = "inline";
+// The cap is named, never silent: when the caller's contract was longer
+// than the budget, the run record says what was dropped — the same honesty
+// the givens contract demands of the composer.
+let givensDropped = Math.max(0, inlineGivens.length - GIVENS_CAP);
 
 if (!question) {
   log("composed-report names no question — nothing to compose.");
@@ -90,7 +101,9 @@ if (givensFile) {
   // reconcile. A read failure is a named end, not a silent fallback to the
   // inline text: the operator asked for the file to be the contract.
   try {
-    givens = String(await files.read(givensFile)).slice(0, GIVENS_CAP);
+    const raw = String(await files.read(givensFile));
+    givensDropped = Math.max(0, raw.length - GIVENS_CAP);
+    givens = raw.slice(0, GIVENS_CAP);
     givensFrom = givensFile;
     if (!givens.trim()) {
       throw new Error("the file is empty");
@@ -117,7 +130,12 @@ if (!givens.trim()) {
     notCovered: ["the composition — there are no permissible facts"],
   };
 }
-log(`givens: ${givens.length} chars from ${givensFrom}`);
+log(
+  `givens: ${givens.length} chars from ${givensFrom}` +
+    (givensDropped > 0
+      ? ` — the source ran ${givensDropped} chars over the ${GIVENS_CAP}-char cap; the drop is named, not silent`
+      : "")
+);
 
 const askPrompt = [
   question,
@@ -196,8 +214,11 @@ if (!answer.trim()) {
 const verdictLine = gatePassed
   ? `the GLiDE gate passed the composed answer (outcome: ${outcome})`
   : `the GLiDE gate did NOT pass the composed answer (outcome: ${outcome}) — the deliverable ships flagged, never blocked`;
+// $0 is a claim; an unmeasured cost is not. A token-plan synthesizer
+// reports no cost_usd, and the run record must not round that to zero.
+const costText = costUsd == null ? "unmeasured" : `$${String(costUsd)}`;
 log(`composed-report — ${verdictLine}.`);
-log(`route: path ${path}, needs_generation ${String(route.needs_generation ?? "unknown")} — cost $${String(costUsd ?? "0")}, ${String(latencyMs ?? "?")}ms${escalated ? ", escalated answer" : ""}.`);
+log(`route: path ${path}, needs_generation ${String(route.needs_generation ?? "unknown")} — cost ${costText}, ${String(latencyMs ?? "?")}ms${escalated ? ", escalated answer" : ""}.`);
 report({
   synthesis: {
     path,
@@ -236,7 +257,7 @@ const flagFooter = [
   "",
   `Composed by blend1 (path: ${path}). Validation gate: ${outcome}` +
     (gatePassed ? "" : " — **this answer did not pass the gate; it ships flagged, never blocked**") +
-    `. Cost: $${String(costUsd ?? "0")}. Latency: ${String(latencyMs ?? "?")}ms.` +
+    `. Cost: ${costText}. Latency: ${String(latencyMs ?? "?")}ms.` +
     (escalated ? " A larger configured model answered after the gate could not clear the first." : ""),
 ].join("\n");
 const WRITE_ONE = [
@@ -262,10 +283,11 @@ await artifact.file("deliverable", DELIVERABLE, { title: "Composed report", prim
 return {
   conclusion:
     `composed-report: ${verdictLine} Deliverable: ${DELIVERABLE} ` +
-    `(path ${path}, $${String(costUsd ?? "0")}, ${String(latencyMs ?? "?")}ms).`,
+    `(path ${path}, ${costText}, ${String(latencyMs ?? "?")}ms).`,
   findings: [gateFinding],
   verified: [
-    `the givens rode as data between explicit markers — ${givens.length} chars from ${givensFrom}, capped at ${GIVENS_CAP}`,
+    `the givens rode as data between per-run-nonce markers — ${givens.length} chars from ${givensFrom}` +
+      (givensDropped > 0 ? ` (${givensDropped} chars over the ${GIVENS_CAP} cap were dropped, named here and in the run log)` : ""),
     `blend1 composed the answer and its GLiDE gate rated it before handover (outcome: ${outcome})`,
     "the gate's verdict, the route path, the cost, and the latency ride in the journal and on the deliverable",
   ],
