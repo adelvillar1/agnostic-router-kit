@@ -73,7 +73,7 @@ below are light-theme renders; the interactive versions carry the file and line 
 - **The run API.** `POST /v1/runs` starts a run for an app token, `POST /v1/runs/<id>/answers` answers its escalations
   live, `GET /v1/runs/<id>/artifacts` reads what it produced. Ownership is re-derived from the journal, so a restart
   never reopens the door.
-- **A loop library.** Nineteen loops over the plane, in four lanes, plus the one-pass workflows they were built
+- **A loop library.** Twenty loops over the plane, in five lanes, plus the one-pass workflows they were built
   from. Seven loop shapes anchor the library — deep-research, remediate, triage, refine-loop, red-team, watchdog,
   router-eval. Six tabular loops ride the dev-decisions
   lane: quota-forecast (per-plan exhaustion bands, an in-band crossing escalates), flake-watch (known-flaky suites
@@ -107,6 +107,16 @@ below are light-theme renders; the interactive versions carry the file and line 
   never a block) — with content-production's voice leg a consumer of the lane
   rather than a loop. Renders are eval-only and a media-gate verdict never
   blocks. See [`docs/features/media-lane.md`](docs/features/media-lane.md).
+  The synthesis lane (the fifth model class — blend1's validated composer:
+  d1's route gate → the fact lanes → LFM2.5-24B synthesis → a GLiDE
+  validation gate) closes the gap the division of labor above left open:
+  composed prose is rated before it ships. It adds composed-report (a
+  question plus a givens contract in, validated prose out — the gate's
+  verdict rides on the artifact, passed or not) and swaps research-report's
+  writer for the validated composer, the angle claims riding as the givens.
+  Every answer ships under a givens contract, and eval-only is the law: a
+  verdict that does not pass ships the artifact flagged, never blocked. See
+  [`docs/features/synthesis-lane.md`](docs/features/synthesis-lane.md).
 - **Dashboard.** The router serves its own dashboard at `/dashboard` — the usage ledger, provider enable/disable,
   quota status, the delegation and workflow assignment view, live run activity, and a Save & apply button that writes
   the roster and re-renders it in place.
@@ -282,7 +292,9 @@ of globals: `args, agent, log, phase, report, escalate, artifact, files, git, wo
   search, sub-agents, local browsing via moli (the `browser` grant, default-off) with keyless-first search — see
   [`docs/features/browsing.md`](docs/features/browsing.md) — the tabular lane (`tabular`, default-off), the
   semantic lane (`semantic`, default-off — see [`docs/features/semantic-lane.md`](docs/features/semantic-lane.md)),
-  and the diagram lane (`diagram`, default-off — see [`docs/features/diagram-lane.md`](docs/features/diagram-lane.md)).
+  and the diagram lane (`diagram`, default-off — see [`docs/features/diagram-lane.md`](docs/features/diagram-lane.md)),
+  the media lane (`media`, default-off — see [`docs/features/media-lane.md`](docs/features/media-lane.md)), and the
+  synthesis lane (`synthesis`, default-off — see [`docs/features/synthesis-lane.md`](docs/features/synthesis-lane.md)).
   A missing grant refuses by name — `capability not granted in this run: net-search` — and the run continues without it.
 - **The journal is the record.** `run.jsonl` holds phases, agent and tool calls, escalations and answers, commands with
   their costs, checkpoints, and the closing `run-done` / `run-failed`. `summary.json` is the run's answer.
@@ -320,9 +332,9 @@ of globals: `args, agent, log, phase, report, escalate, artifact, files, git, wo
   list; it never authors a claim and never accepts a still. See
   [`docs/features/diagram-lane.md`](docs/features/diagram-lane.md).
 
-### The workflow inventory (43 files, nineteen loops)
+### The workflow inventory (45 files, twenty loops)
 
-**Loops — 17 files carrying nineteen loops.** Seven library shapes, six tabular, two semantic, three media, one diagram;
+**Loops — 18 files carrying twenty loops.** Seven library shapes, six tabular, two semantic, three media, one diagram, one synthesis;
 `review-sweep`, `triage`, and `watchdog` each carry two (a loop plus its tabular/semantic head).
 
 | workflow | loops | what it is |
@@ -344,6 +356,7 @@ of globals: `args, agent, log, phase, report, escalate, artifact, files, git, wo
 | `asr-calibrate` | media | The pinned ASR fixture graded per provider leg; the lane's promotion evidence. |
 | `media-budget-watch` | media | Audio-seconds forecast against a named budget; a crossing escalates, a thin table degrades by name. |
 | `narrate` | media | Render a script to voice and verify it against the script; advisory, never a block. |
+| `composed-report` | synthesis | A question plus a givens contract in, blend1's validated prose out; the gate's verdict rides on the artifact. |
 
 **One-pass workflows — 9.**
 
@@ -357,14 +370,14 @@ of globals: `args, agent, log, phase, report, escalate, artifact, files, git, wo
 | `deep-dive` | Explorers cover subsystems in parallel; a writer integrates and flags risks. |
 | `migration` | Planner splits a migration into gated, independently-built steps. |
 | `postmortem` | Investigators reconstruct the timeline; one analyst turns it into findings. |
-| `research-report` | Scouts cover 4–6 angles, checkers verify, a writer integrates with sources. |
+| `research-report` | Scouts cover 4–6 angles, checkers verify, blend1's validated composer integrates with sources. |
 
-**Harness probes — 17, zero model calls by design.** `budgets-probe`, `checkpoint-probe`, `commands-probe`,
+**Harness probes — 18, zero model calls by design.** `budgets-probe`, `checkpoint-probe`, `commands-probe`,
 `competition-probe`, `context-probe`, `delegate-probe`, `edit-probe`, `escalation-probe`, `grants-probe`,
 `http-probe`, `judge-probe`, `memory-probe`, `plane-probe`, `runtime-surface-probe`, `search-probe`,
-`services-probe`, `tokens-probe` — each proves one plane contract (budgets, checkpoints, background commands,
+`services-probe`, `synthesis-probe`, `tokens-probe` — each proves one plane contract (budgets, checkpoints, background commands,
 settlement, context checking, delegation, edits, escalation resolution, grants, the run API, the judge layer, the
-memory plane, harness assembly, the runtime surface, net search, harness services, token accounting). `npm test`
+memory plane, harness assembly, the runtime surface, net search, harness services, the synthesis lane, token accounting). `npm test`
 runs them all; `kit workflows list` is the live enumeration with install state and router-assignability.
 
 ## Safety model

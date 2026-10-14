@@ -67,6 +67,10 @@ granted in this run: media" by an asr-calibrate run started 31ms later with no
 grants at all. tools/probe-concurrent-runs.mjs drives the real `runWorkflow`
 with two runs started ~15ms apart and asserts each run's identity, grants and
 journal are its own — see docs/plans/2026-10-08-media-loops.md.
+2026-10-14 synthesis wave: `world.synthesis` (blend1, `synthesis`
+grant default-off, batch-only) + composed-report + research-report's
+composer swap — see docs/plans/2026-10-14-synthesis-lane.md and
+docs/features/synthesis-lane.md.
 # agnostic-router-kit — house rules
 
 This repo is the harness-agnostic edition: the router and roster are neutral
