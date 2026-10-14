@@ -166,12 +166,21 @@ tabular/semantic lanes already established (`DEV_DECISIONS_BIN` →
   **VERIFIED offline** — the spec review's diff proof: exactly two hunks,
   both at/after the Writer phase; lines 1-124 and the closing return
   byte-identical to the pre-image. **The all-live leg is BLOCKED by a
-  pre-existing instability**: two live runs failed at the kit's own
-  24-tool-round Scout cap (angles 5 then 3; last tools write_file then
-  search_files; zero synthesis_ask rows in either journal — the compose
-  phase never ran). The failing phase is byte-identical to the pre-image
-  and the failure reproduces with and without source material in the
-  workdir; it is model behavior in the agent phases, not the swap.
+  pre-existing agent-model instability, not the swap**: three live
+  attempts (2026-10-14, across machine states and workdir shapes) all
+  died at the kit's own 24-tool-round cap inside byte-identical phases —
+  Scout angle 5 (write_file), Scout angle 3 (search_files), the Scoper
+  itself (33 read_files over 166s), then Scout angle 5 again (run_command)
+  — with zero `synthesis_ask` rows in every journal: the compose phase
+  never ran. Diagnostics: a focused workdir (the lane's own five source
+  files) fixes the Scoper — it converges on 6 angles; individual scouts
+  still spin when they hit a wall (missing repo, ungranted net), and the
+  engine's no-owner escalation degradation ("proceed on your best
+  judgment") is correct but the token-plan model does not follow it. The
+  first two attempts ran while the machine was loaded by a large local
+  model (user-confirmed); the third ran quiet (Ollama idle) and still
+  spun, so load is a contributor, not the cause. Re-run when the scout
+  models converge, or narrow their instructions.
 - [x] **AC5** — `npm test` green. **VERIFIED** — 33 suites (31 baseline +
   unit-services-synthesis + unit-loops-synthesis); the only failure,
   probe-run-api ("default workdir is the app's own root"), fails
