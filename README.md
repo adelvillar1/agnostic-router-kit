@@ -62,7 +62,7 @@ below are light-theme renders; the interactive versions carry the file and line 
 - **Routes by workload.** One judgment per task — the sys1 decide provider (a
   [sys1](https://github.com/adelvillar1/sys1) decision service on `127.0.0.1:8400`), TypeSafe Jev, or cascade (sys1
   first, Jev escalates on low confidence) — picks one of your tiers: `quick`, `standard_code`, `hard`, `prose`,
-  `deep_context`, each mapped to a provider/model with an ordered fallback chain.
+  `deep_context`, `composed`, each mapped to a provider/model with an ordered fallback chain.
 - **Respects plans.** Quota-aware steering walks the tier's candidate chain, records every attempt in a usage ledger,
   and never fails a request: judge outages, missing keys, and exhausted quotas degrade to the next candidate, tagged
   in the log and in response headers.
@@ -243,6 +243,27 @@ generated. Commit the roster — it holds env-var *names*, never values — and 
   local moli first (the `browser` grant, default-off), Firecrawl when the browser can't, plain fetch as the floor.
 
 `templates/roster.defaults.json` documents every field with its default.
+
+### `providers.blend1` — the composed tier's pipeline provider
+
+`blend1` is not a model endpoint, it is a **pipeline**: one local service on `127.0.0.1:8420` that runs a router lane, a
+semantic lane and a tabular lane in parallel and synthesizes only when the router says so. It speaks the same
+OpenAI-compatible dialect as every other provider (`POST /v1/chat/completions`), so it needs no router code — the
+`composed` tier targets `blend1/blend1` and its fallbacks are the `standard_code` chain verbatim, so a blend that is
+down degrades to a plain model.
+
+The one field worth knowing: **blend1's answer rides with its verdict.** Alongside the standard
+`choices[0].message.content`, the service returns a non-standard `blend1` field — `path` (the shape its router chose),
+`route` (that router's nouls), `validation` (the gate's verdict), `escalated_answer` (whether the larger configured
+model answered after the gate could not clear), `cost_usd` (the measured generative cost — `null` when unmeasured,
+never `$0`), `latency_ms`. A client that reads only `content` loses nothing; a client that wants the verdict gets all
+of it. A gate that did not pass is still a `200` with the answer shipping flagged — a flag is information, an outage
+is an outage, so the tier's failover fires on a *down* blend, never on a flagged one.
+
+`apiKeyEnv` names `BLEND1_BEARER_TOKEN`, the service's own optional bearer: the roster requires a key name for every
+usable provider, and blend1's service is localhost-open while that variable is unset — set it in the runtime `.env`
+(`kit env set BLEND1_BEARER_TOKEN=…`) to require a token on the service *and* let the router present it. Until it
+resolves, `composed` renders onto its fallback chain, which is the degradation the plan intends.
 
 ## How the router decides
 

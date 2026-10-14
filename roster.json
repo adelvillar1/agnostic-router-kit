@@ -81,6 +81,16 @@
       "routerOnly": true,
       "models": [],
       "enabled": true
+    },
+    "blend1": {
+      "providerName": "blend1 (composed ask)",
+      "baseUrl": "http://127.0.0.1:8420/v1",
+      "apiKeyEnv": "BLEND1_BEARER_TOKEN",
+      "billing": "plan",
+      "models": [
+        "blend1"
+      ],
+      "enabled": true
     }
   },
   "omniModel": [
@@ -127,6 +137,14 @@
       "fallbacks": [
         "zai-coding-plan/GLM-5.3-Flash",
         "xiaomi-mimo/mimo-v2.6-pro"
+      ]
+    },
+    "composed": {
+      "target": "blend1/blend1",
+      "fallbacks": [
+        "token-plan/qwen3.8-flash",
+        "zai-coding-plan/GLM-5.3-Flash",
+        "stepfun/step-3.7-flash"
       ]
     }
   },
