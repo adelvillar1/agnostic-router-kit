@@ -95,12 +95,19 @@ if (!String(blend.final_answer ?? "").trim()) {
   throw new Error("the BlendResult carries no final_answer — shape drift?");
 }
 const validation = blend.validation ?? {};
-if (!validation.outcome) {
-  throw new Error(`the BlendResult carries no validation.outcome — the gate did not ride (path: ${String(blend.path ?? "unknown")})`);
-}
 const route = blend.route ?? {};
 if (typeof route.needs_generation !== "number") {
   throw new Error("the BlendResult's route carries no needs_generation noul — shape drift?");
+}
+// The gate rides the SYNTHESIZED path only — a direct-path ask has nothing
+// to rate, and the live runs proved d1's routing is per-ask: the same
+// trivial question routed direct on one run. So the probe asserts the
+// shape it can rely on (final_answer + route nouls) on every path, and the
+// gate's outcome when — and only when — the router chose synthesis. A
+// granted mode that demanded synthesis would pass or fail on the router's
+// mood rather than on the lane's contract.
+if (String(blend.path ?? "") === "synthesized" && !validation.outcome) {
+  throw new Error("the router chose synthesis but the BlendResult carries no validation.outcome — the gate did not ride");
 }
 return {
   conclusion:
