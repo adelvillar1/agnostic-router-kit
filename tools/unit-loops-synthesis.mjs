@@ -86,8 +86,14 @@ process.stdout.write(JSON.stringify(${JSON.stringify(fixture)}, null, 2));
 
 /** A binary that exists and is +x but has no valid shebang — the ENOEXEC spawn failure. */
 function brokenBin(name) {
+  // Exists, not executable — the one "cannot run" shape every platform
+  // delivers the same way (EACCES, async). The old fixture (a no-shebang
+  // +x text file) reached the spawn layer only on macOS: glibc's execvp
+  // falls back to /bin/sh on ENOEXEC, so on Linux the garbage ran as a
+  // failing sh script and the case was untestable there (KI-001's run
+  // 40107169882).
   const p = path.join(yard, name);
-  fs.writeFileSync(p, "this is not a script and has no shebang", { mode: 0o755 });
+  fs.writeFileSync(p, "#!/bin/sh\necho this binary is not executable\n", { mode: 0o644 });
   return p;
 }
 
