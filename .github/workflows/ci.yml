@@ -13,9 +13,12 @@
 # TypeScript types from 22.6 (flagged) / 23.6 (unflagged) — every probe
 # touching a .mts failed ERR_UNKNOWN_FILE_EXTENSION on the Node 20 runner
 # while passing locally (KI-001, the 2026-10-14 runs).
-# npm ci before npm test: workflow-plane is a `file: lib/workflow`
+# npm install before npm test: workflow-plane is a `file: lib/workflow`
 # dependency, so without an install step the probes that import it died
-# ERR_MODULE_NOT_FOUND on the runner (the same KI-001 runs).
+# ERR_MODULE_NOT_FOUND on the runner (the same KI-001 runs). Plain
+# `npm install`, not `npm ci`: the lockfile is deliberately gitignored
+# here (a file:-dependency lock pins a machine path), so there is
+# nothing for ci to be strict about.
 name: ci
 
 on:
@@ -35,6 +38,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
-      - run: npm ci
+      - run: npm install
       - run: npm test
