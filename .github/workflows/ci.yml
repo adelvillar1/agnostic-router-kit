@@ -19,6 +19,13 @@
 # `npm install`, not `npm ci`: the lockfile is deliberately gitignored
 # here (a file:-dependency lock pins a machine path), so there is
 # nothing for ci to be strict about.
+# npm install --prefix router before npm test: `kit apply` renders the
+# runtime by copying router/node_modules/@typesafe-ai from this checkout,
+# and that directory is gitignored like every node_modules — so a fresh
+# clone's scratch routers died "Cannot find package '@typesafe-ai/sdk'"
+# (five suites on the same KI-001 runs). Reproduced and restored locally:
+# without the directory 33 suites / 5 fail, `npm install --prefix router`
+# and 33 suites / 0 fail.
 name: ci
 
 on:
@@ -39,4 +46,5 @@ jobs:
         with:
           node-version: 24
       - run: npm install
+      - run: npm install --prefix router
       - run: npm test
