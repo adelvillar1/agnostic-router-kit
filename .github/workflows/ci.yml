@@ -7,7 +7,15 @@
 # the sibling edition's checkout and stay local-only.
 #
 # Deliberately NOT copied from bigger projects: merge queues, multi-OS
-# sharding, duration-sequenced shards. One green job on node 20 is the gate.
+# sharding, duration-sequenced shards. One green job is the gate.
+#
+# Node 24, not 20: the probes import .mts modules, and Node only strips
+# TypeScript types from 22.6 (flagged) / 23.6 (unflagged) — every probe
+# touching a .mts failed ERR_UNKNOWN_FILE_EXTENSION on the Node 20 runner
+# while passing locally (KI-001, the 2026-10-14 runs).
+# npm ci before npm test: workflow-plane is a `file: lib/workflow`
+# dependency, so without an install step the probes that import it died
+# ERR_MODULE_NOT_FOUND on the runner (the same KI-001 runs).
 name: ci
 
 on:
@@ -26,5 +34,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
+          cache: npm
+      - run: npm ci
       - run: npm test
